@@ -82,6 +82,10 @@ builder.Services.AddControllers()
 builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<IProductOperation, ProductOperation>();
 
+// Bid services
+builder.Services.AddScoped<IBidService, BidService>();
+builder.Services.AddScoped<IBidOperation, BidOperation>();
+
 // Authentication services
 builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
