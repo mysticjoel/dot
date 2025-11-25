@@ -1,0 +1,222 @@
+---
+description: "Enforce .NET 8 coding, architecture, security, documentation, and performance best practices."
+globs:
+  - "**/*.cs"
+alwaysApply: true
+---
+
+# .NET 8 Best Practices — Project Rule
+
+Follow these rules for all .NET 8 APIs, services, libraries, and background workers.
+
+---
+
+## ✅ **1. Code Quality Standards**
+
+### C# Coding Conventions
+- Use **PascalCase** for class names, method names, and public properties.
+- Use **camelCase** for parameters and private fields (`_camelCase` for private fields).
+- Use **explicit access modifiers** always.
+- Prefer **expression-bodied members** when simple and readable.
+- No unused imports — ensure `global using` statements are structured logically.
+
+### Git Standards
+- Meaningful commit messages following pattern:  
+  **feat:**, **fix:**, **refactor:**, **test:**, **docs:**, **chore:**  
+- One feature/bug fix per PR.
+
+### Async Programming
+- Use **async/await for all I/O operations**.
+- Avoid `.Result`, `.Wait()`, `Task.Run()` on server-side unless required.
+- Methods performing async work must end with **Async**.
+
+### Exception Handling
+- Use **middleware** for global exception handling.
+- Never swallow exceptions silently.
+- Log errors using **ILogger** (no `Console.WriteLine` in production).
+- Use custom exceptions where appropriate.
+
+### SOLID Principles
+- Each class must have **a single responsibility**.
+- Use interfaces and DI to avoid tight coupling.
+- Open for extension, closed for modification.
+- Use **dependency inversion** for all service-to-service communication.
+
+---
+
+## ✅ **2. Documentation Requirements**
+
+### Swagger
+- Include **Swagger + minimal metadata** in all Web APIs.
+- Document authentication requirements in Swagger.
+
+### XML Comments
+- XML docs required for all:
+  - Public methods
+  - Public classes
+  - DTOs and models
+
+### README
+- Must include:
+  - Setup instructions
+  - Tech stack
+  - Environment variable list
+  - Migration steps (`dotnet ef database update`)
+  - Run commands
+
+### Database Schema Docs
+- Maintain schema in `/docs/db-schema.md` or equivalent.
+- Keep ER diagram updated after major changes.
+
+---
+
+## ✅ **3. Security Standards**
+
+### Authentication
+- Use **JWT-based authentication** with:
+  - Signature validation
+  - Expiry validation
+  - Role claims
+
+### Passwords
+- Always hash using **PBKDF2**, **bcrypt**, or **Argon2** (no SHA256 hashing).
+
+### Data Validation
+- Validate all input using:
+  - Model binding validation
+  - `FluentValidation` OR data annotations
+- Reject invalid requests via middleware.
+
+### SQL Injection Prevention
+- Use **parameterized EF Core queries**.
+- No raw SQL unless **FromSqlInterpolated** is used.
+
+### Authorization
+- Enforce **role-based** and/or **policy-based** authorization.
+- Protect admin endpoints with policies.
+
+---
+
+## ✅ **4. Performance Guidelines**
+
+### Database
+- Use **AsNoTracking()** for read-only queries.
+- Always create **indexes** for large tables.
+- Avoid N+1 queries using:
+  - `Include()`
+  - Projection queries
+
+### Caching
+- Use **IMemoryCache** or **distributed Redis cache** for:
+  - Lookups
+  - Frequently read static data
+  - Configuration
+
+### Background Work
+- Long-running or heavy tasks must be handled with:
+  - `BackgroundService`
+  - Hangfire / Azure Queue / AWS SQS (if applicable)
+
+### Optimizations
+- Use **connection pooling** (default in .NET 8).
+- Avoid blocking operations or synchronous DB calls.
+
+---
+
+## ✅ **5. Maintainability Requirements**
+
+### Constants
+- Use **enums** instead of magic numbers or strings.
+- Use **static optionsbindings (IOptions pattern)** for app settings.
+
+### Validation
+- All request models must use:
+  - Data annotations (e.g., `[Required]`)
+  - OR FluentValidation
+
+### Architecture
+- Follow this structure:
+
+
+### Patterns
+- Repositories abstract data access.
+- Services contain business logic.
+- Controllers contain minimal orchestration only.
+
+---
+
+## ✅ **6. Configuration & Environment Variables**
+
+### Never hard-code configuration values
+Use:
+```csharp
+builder.Configuration["Jwt:ExpirationMinutes"]
+builder.Configuration.GetValue<int>("Service:TimeoutSeconds")
+
+
+Application Settings
+
+All numeric or time-based constraints must be configurable:
+
+Token expiry minutes
+
+Cache expiration seconds
+
+Retry counts
+
+Background job intervals
+
+Example appsettings.json:
+{
+  "Jwt": {
+    "Issuer": "your-app",
+    "Audience": "your-app",
+    "Key": "env:JWT_KEY",
+    "ExpirationMinutes": 30
+  },
+  "Cache": {
+    "DefaultTTLSeconds": 300
+  },
+  "RateLimit": {
+    "RequestsPerMinute": 60
+  }
+}
+Environment Variables
+
+Use Environment variables for:
+
+Secrets (JWT key)
+
+
+Redis URL
+
+External API keys
+
+Retrieve using:
+Environment.GetEnvironmentVariable("JWTKEY")
+
+✅ 7. Testing Requirements
+Unit Tests
+
+Minimum 80% code coverage.
+
+Use:
+
+xUnit or NUnit
+
+Moq / NSubstitute
+
+Test containers where needed
+
+Coverage Includes:
+
+Controllers
+
+Services
+
+Repositories (mock DB)
+
+Edge cases
+
+Error handling
+
