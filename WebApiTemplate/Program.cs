@@ -93,11 +93,29 @@ builder.Services.AddScoped<IBidOperation, BidOperation>();
 builder.Services.Configure<AuctionSettings>(
     builder.Configuration.GetSection("AuctionSettings"));
 
+// Payment settings configuration
+builder.Services.Configure<PaymentSettings>(
+    builder.Configuration.GetSection("PaymentSettings"));
+
+// SMTP settings configuration
+builder.Services.Configure<SmtpSettings>(
+    builder.Configuration.GetSection("SmtpSettings"));
+
 // Auction extension service
 builder.Services.AddScoped<IAuctionExtensionService, AuctionExtensionService>();
 
+// Payment services
+builder.Services.AddScoped<IPaymentService, PaymentService>();
+builder.Services.AddScoped<IPaymentOperation, PaymentOperation>();
+
+// Email service
+builder.Services.AddScoped<IEmailService, EmailService>();
+
 // Background service for auction monitoring
 builder.Services.AddHostedService<AuctionMonitoringService>();
+
+// Background service for payment retry queue
+builder.Services.AddHostedService<RetryQueueService>();
 
 // Authentication services
 builder.Services.AddSingleton<IJwtService, JwtService>();
@@ -230,6 +248,9 @@ app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
+
+// Global exception handler middleware
+app.UseGlobalExceptionHandler();
 
 // Request logging middleware with correlation IDs
 app.UseRequestLogging();

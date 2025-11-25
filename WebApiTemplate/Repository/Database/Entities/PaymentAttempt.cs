@@ -25,9 +25,15 @@ namespace WebApiTemplate.Repository.Database.Entities
 
         public DateTime AttemptTime { get; set; } = DateTime.UtcNow;
 
+        public DateTime ExpiryTime { get; set; }
+
         // Optional: store the amount attempted for audit consistency
         [Column(TypeName = "numeric(18,2)")]
         public decimal? Amount { get; set; }
+
+        // Amount confirmed by the bidder during payment confirmation
+        [Column(TypeName = "numeric(18,2)")]
+        public decimal? ConfirmedAmount { get; set; }
 
         // Navigation
         public Auction Auction { get; set; } = default!;

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using WebApiTemplate.Constants;
+using WebApiTemplate.Exceptions;
 using WebApiTemplate.Models;
 using WebApiTemplate.Service.Interface;
 
@@ -17,21 +18,27 @@ namespace WebApiTemplate.Controllers
     public class ProductsController : ControllerBase
     {
         private readonly IProductService _productService;
+        private readonly IPaymentService _paymentService;
         private readonly IValidator<CreateProductDto> _createProductValidator;
         private readonly IValidator<UpdateProductDto> _updateProductValidator;
+        private readonly IValidator<PaymentConfirmationDto> _paymentConfirmationValidator;
         private readonly Service.QueryParser.IAsqlParser _asqlParser;
         private readonly ILogger<ProductsController> _logger;
 
         public ProductsController(
             IProductService productService,
+            IPaymentService paymentService,
             IValidator<CreateProductDto> createProductValidator,
             IValidator<UpdateProductDto> updateProductValidator,
+            IValidator<PaymentConfirmationDto> paymentConfirmationValidator,
             Service.QueryParser.IAsqlParser asqlParser,
             ILogger<ProductsController> logger)
         {
             _productService = productService;
+            _paymentService = paymentService;
             _createProductValidator = createProductValidator;
             _updateProductValidator = updateProductValidator;
+            _paymentConfirmationValidator = paymentConfirmationValidator;
             _asqlParser = asqlParser;
             _logger = logger;
         }
@@ -306,6 +313,105 @@ namespace WebApiTemplate.Controllers
             {
                 _logger.LogError(ex, "Error deleting product {ProductId}", id);
                 return StatusCode(500, new { message = "An error occurred while deleting the product" });
+            }
+        }
+
+        /// <summary>
+        /// Confirm payment for an auction (User only - must be eligible winner)
+        /// </summary>
+        /// <param name="id">Product ID</param>
+        /// <param name="dto">Payment confirmation data</param>
+        /// <returns>Transaction details</returns>
+        [HttpPost("{id}/confirm-payment")]
+        [ProducesResponseType(typeof(TransactionDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> ConfirmPayment(int id, [FromBody] PaymentConfirmationDto dto)
+        {
+            try
+            {
+                // Validate DTO
+                var validationResult = await _paymentConfirmationValidator.ValidateAsync(dto);
+                if (!validationResult.IsValid)
+                {
+                    return BadRequest(new { message = "Validation failed", errors = validationResult.Errors });
+                }
+
+                // Ensure product ID in route matches DTO
+                if (dto.ProductId != id)
+                {
+                    return BadRequest(new { message = "Product ID in route does not match request body" });
+                }
+
+                // Get user ID from claims
+                var userId = GetUserIdFromClaims();
+
+                // Read testInstantFail header
+                var testInstantFail = false;
+                if (Request.Headers.TryGetValue("testInstantFail", out var testHeaderValue))
+                {
+                    bool.TryParse(testHeaderValue.ToString(), out testInstantFail);
+                }
+
+                _logger.LogInformation(
+                    "Processing payment confirmation for product {ProductId}, user {UserId}, amount {Amount}, testInstantFail {TestInstantFail}",
+                    id, userId, dto.ConfirmedAmount, testInstantFail);
+
+                // Confirm payment
+                var transaction = await _paymentService.ConfirmPaymentAsync(
+                    id,
+                    userId,
+                    dto.ConfirmedAmount,
+                    testInstantFail);
+
+                // Map to DTO
+                var transactionDto = new TransactionDto
+                {
+                    TransactionId = transaction.TransactionId,
+                    PaymentId = transaction.PaymentId,
+                    AuctionId = transaction.PaymentAttempt.AuctionId,
+                    ProductId = transaction.PaymentAttempt.Auction.ProductId,
+                    ProductName = transaction.PaymentAttempt.Auction.Product.Name,
+                    BidderId = transaction.PaymentAttempt.BidderId,
+                    BidderEmail = transaction.PaymentAttempt.Bidder.Email,
+                    Status = transaction.Status,
+                    Amount = transaction.Amount,
+                    AttemptNumber = transaction.PaymentAttempt.AttemptNumber,
+                    Timestamp = transaction.Timestamp
+                };
+
+                return Ok(transactionDto);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                _logger.LogWarning(ex, "Resource not found for payment confirmation");
+                return NotFound(new { message = ex.Message });
+            }
+            catch (UnauthorizedPaymentException ex)
+            {
+                _logger.LogWarning(ex, "Unauthorized payment confirmation attempt");
+                return Unauthorized(new { message = ex.Message });
+            }
+            catch (PaymentWindowExpiredException ex)
+            {
+                _logger.LogWarning(ex, "Payment window expired");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidPaymentAmountException ex)
+            {
+                _logger.LogWarning(ex, "Invalid payment amount");
+                return BadRequest(new { message = ex.Message, expectedAmount = ex.ExpectedAmount, confirmedAmount = ex.ConfirmedAmount });
+            }
+            catch (PaymentException ex)
+            {
+                _logger.LogWarning(ex, "Payment error");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error confirming payment for product {ProductId}", id);
+                return StatusCode(500, new { message = "An error occurred while confirming payment" });
             }
         }
 

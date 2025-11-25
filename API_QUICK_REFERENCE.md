@@ -2,7 +2,7 @@
 
 ## 📝 Summary
 
-**Total Endpoints:** 16
+**Total Endpoints:** 24
 **Authentication:** JWT Bearer Token
 **Base URL:** `http://localhost:6000`
 
@@ -25,9 +25,11 @@
 | PUT | `/api/products/{id}` | ✅ | Admin | Update product |
 | PUT | `/api/products/{id}/finalize` | ✅ | Admin | Finalize auction |
 | DELETE | `/api/products/{id}` | ✅ | Admin | Delete product |
-| **POST** | **`/api/bids`** | ✅ | **User** | **Place bid on auction** |
-| **GET** | **`/api/bids/{auctionId}`** | ✅ | **Any** | **Get all bids for auction** |
-| **GET** | **`/api/bids`** | ✅ | **Any** | **Filter bids (query params)** |
+| POST | `/api/bids` | ✅ | User | Place bid on auction |
+| GET | `/api/bids` | ✅ | Any | Filter bids (query params) |
+| GET | `/api/bids/my-bids` | ✅ | Any | Get my own bids |
+| **POST** | **`/api/products/{id}/confirm-payment`** | ✅ | **User** | **Confirm payment (winner only)** |
+| **GET** | **`/api/transactions`** | ✅ | **Any** | **Get transactions (filtered)** |
 
 ---
 
@@ -83,6 +85,23 @@ curl -X GET "http://localhost:6000/api/bids?userId=2&minAmount=100" \
   -H "Authorization: Bearer YOUR_TOKEN_HERE"
 ```
 
+### 7. Confirm Payment (Winner)
+```bash
+curl -X POST http://localhost:6000/api/products/1/confirm-payment \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "productId": 1,
+    "confirmedAmount": 1500.00
+  }'
+```
+
+### 8. Get Transactions
+```bash
+curl -X GET "http://localhost:6000/api/transactions?status=Success&pageNumber=1&pageSize=10" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+```
+
 ---
 
 ## 🔑 Default Credentials
@@ -124,6 +143,21 @@ Available query parameters for `GET /api/bids`:
 GET /api/bids?userId=2&minAmount=100&maxAmount=500
 ```
 
+### Transaction Filters
+Available query parameters for `GET /api/transactions`:
+- `userId` - Filter by user ID (Admin only)
+- `auctionId` - Filter by auction ID
+- `status` - Filter by status (Success/Failed)
+- `fromDate` - Start date for transaction timestamp
+- `toDate` - End date for transaction timestamp
+- `pageNumber` - Page number (default: 1)
+- `pageSize` - Items per page (default: 10)
+
+**Example:**
+```
+GET /api/transactions?status=Success&fromDate=2024-01-01&pageNumber=1&pageSize=10
+```
+
 ---
 
 ## 📤 Excel Upload Format
@@ -147,13 +181,44 @@ GET /api/bids?userId=2&minAmount=100&maxAmount=500
 
 **Auction Status:**
 - `active` - Accepting bids
-- `expired` - Ended with bids (pending payment)
-- `success` - Completed successfully
-- `failed` - Ended with no bids
+- `pendingpayment` - Ended, awaiting payment confirmation
+- `completed` - Payment confirmed successfully
+- `failed` - Ended with no bids or payment failed
 
-**Background Service:**
-- Runs every 30 seconds
-- Automatically finalizes expired auctions
+**Background Services:**
+1. **AuctionMonitoringService** (every 30s)
+   - Finalizes expired auctions
+   - Initiates payment flow for auctions with bids
+   - Sends email notification to highest bidder
+
+2. **RetryQueueService** (every 30s)
+   - Processes expired payment attempts
+   - Triggers automatic retries for next-highest bidder
+   - Marks auction as failed after 3 failed attempts
+
+---
+
+## 💳 Payment Workflow
+
+**When Auction Expires:**
+1. System creates PaymentAttempt for highest bidder
+2. Email sent with **1-minute payment window**
+3. Bidder confirms payment with exact amount
+4. **On Success:** Transaction created, Auction marked "Completed"
+5. **On Failure:** Instant retry for next-highest bidder
+6. **Max 3 attempts** before auction marked "Failed"
+
+**Test Modes:**
+- Normal: Confirm with correct amount
+- Amount Mismatch: Wrong amount → Instant retry
+- Test Instant Fail: Add header `testInstantFail: true`
+- Window Expired: Wait 1+ minute → Retry after 30s
+
+**Payment Confirmation Headers:**
+```
+Authorization: Bearer YOUR_TOKEN
+testInstantFail: true  (optional, for testing)
+```
 
 ---
 

@@ -40,7 +40,7 @@ namespace WebApiTemplate.Repository.DatabaseOperation.Implementation
                 .AsNoTracking()
                 .Include(a => a.Product)
                     .ThenInclude(p => p.Owner)
-                .Include(a => a.HighestBid)
+                .Include(a => a.HighestBid!)
                     .ThenInclude(b => b.Bidder)
                 .FirstOrDefaultAsync(a => a.AuctionId == auctionId);
         }

@@ -14,15 +14,18 @@ namespace WebApiTemplate.Service
     public class AuctionExtensionService : IAuctionExtensionService
     {
         private readonly IBidOperation _bidOperation;
+        private readonly IPaymentService _paymentService;
         private readonly AuctionSettings _auctionSettings;
         private readonly ILogger<AuctionExtensionService> _logger;
 
         public AuctionExtensionService(
             IBidOperation bidOperation,
+            IPaymentService paymentService,
             IOptions<AuctionSettings> auctionSettings,
             ILogger<AuctionExtensionService> logger)
         {
             _bidOperation = bidOperation;
+            _paymentService = paymentService;
             _auctionSettings = auctionSettings.Value;
             _logger = logger;
         }
@@ -108,10 +111,30 @@ namespace WebApiTemplate.Service
 
                     if (auction.HighestBidId.HasValue && auction.HighestBidId > 0)
                     {
-                        // Auction has bids - mark as expired (pending payment)
-                        newStatus = AuctionStatus.Expired;
+                        // Auction has bids - mark as expired (pending payment) and initiate payment flow
+                        newStatus = AuctionStatus.PendingPayment;
                         _logger.LogInformation("Finalizing auction {AuctionId} with highest bid {BidId}. Status: {Status}",
                             auction.AuctionId, auction.HighestBidId, newStatus);
+
+                        auction.Status = newStatus;
+                        await _bidOperation.UpdateAuctionAsync(auction);
+
+                        // Create first payment attempt and send email notification
+                        try
+                        {
+                            _logger.LogInformation("Initiating payment flow for auction {AuctionId}", auction.AuctionId);
+                            var paymentAttempt = await _paymentService.CreateFirstPaymentAttemptAsync(auction.AuctionId);
+                            _logger.LogInformation(
+                                "Payment flow initiated for auction {AuctionId}, payment attempt {PaymentId}",
+                                auction.AuctionId, paymentAttempt.PaymentId);
+                        }
+                        catch (Exception paymentEx)
+                        {
+                            _logger.LogError(paymentEx, 
+                                "Error initiating payment flow for auction {AuctionId}. Auction status updated but payment not created.",
+                                auction.AuctionId);
+                            // Don't fail the finalization - auction is already marked as pending payment
+                        }
                     }
                     else
                     {
@@ -119,10 +142,10 @@ namespace WebApiTemplate.Service
                         newStatus = AuctionStatus.Failed;
                         _logger.LogInformation("Finalizing auction {AuctionId} with no bids. Status: {Status}",
                             auction.AuctionId, newStatus);
-                    }
 
-                    auction.Status = newStatus;
-                    await _bidOperation.UpdateAuctionAsync(auction);
+                        auction.Status = newStatus;
+                        await _bidOperation.UpdateAuctionAsync(auction);
+                    }
 
                     finalizedCount++;
                 }

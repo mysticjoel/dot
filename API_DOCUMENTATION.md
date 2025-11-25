@@ -17,6 +17,36 @@ Authorization: Bearer YOUR_JWT_TOKEN_HERE
 ## 📋 API Endpoints Overview
 
 ### 1️⃣ Authentication Endpoints
+- `POST /api/Auth/register` - Register new user
+- `POST /api/Auth/login` - Login and get JWT token
+
+### 2️⃣ User Endpoints
+- `GET /api/Users/profile` - Get current user profile
+- `PUT /api/Users/profile` - Update current user profile
+- `GET /api/Users` - Get all users (Admin only)
+
+### 3️⃣ Product Endpoints
+- `GET /api/products` - Get all products with ASQL filter
+- `GET /api/products/active` - Get active auctions
+- `GET /api/products/{id}` - Get auction details
+- `POST /api/products` - Create product (Admin only)
+- `POST /api/products/upload` - Upload products via Excel (Admin only)
+- `PUT /api/products/{id}` - Update product (Admin only)
+- `PUT /api/products/{id}/finalize` - Force finalize auction (Admin only)
+- `DELETE /api/products/{id}` - Delete product (Admin only)
+
+### 4️⃣ Bid Endpoints
+- `POST /api/bids` - Place a bid
+- `GET /api/bids` - Get filtered bids with pagination
+- `GET /api/bids/my-bids` - Get current user's bids
+
+### 5️⃣ Payment & Transaction Endpoints
+- `POST /api/products/{id}/confirm-payment` - Confirm payment
+- `GET /api/transactions` - Get filtered transactions
+
+---
+
+### 1️⃣ Authentication Endpoints
 
 #### 🔓 **Register New User**
 ```http
@@ -820,6 +850,161 @@ pm.test("Login successful", function () {
 // Body: form-data
 // Key: file (type: File)
 // Value: products.xlsx
+```
+
+---
+
+### 7️⃣ Payment & Transaction Endpoints
+
+#### 💳 **Confirm Payment**
+```http
+POST /api/products/{id}/confirm-payment
+```
+**Auth Required:** ✅ Yes (Must be eligible winner)
+
+**Path Parameters:**
+- `id` (integer, required) - Product ID
+
+**Headers:**
+- `testInstantFail` (optional) - Set to "true" for instant failure testing
+
+**Request Body:**
+```json
+{
+  "productId": 1,
+  "confirmedAmount": 1500.00
+}
+```
+
+**Response (200):**
+```json
+{
+  "transactionId": 1,
+  "paymentId": 1,
+  "auctionId": 1,
+  "productId": 1,
+  "productName": "Vintage Watch",
+  "bidderId": 5,
+  "bidderEmail": "user@example.com",
+  "status": "Success",
+  "amount": 1500.00,
+  "attemptNumber": 1,
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+```
+
+**Error Responses:**
+
+**400 Bad Request - Amount Mismatch:**
+```json
+{
+  "message": "Payment amount mismatch. Expected: $1500.00, Confirmed: $1400.00",
+  "expectedAmount": 1500.00,
+  "confirmedAmount": 1400.00
+}
+```
+
+**400 Bad Request - Window Expired:**
+```json
+{
+  "message": "Payment window expired at 2024-01-15 10:31:00 UTC"
+}
+```
+
+**401 Unauthorized:**
+```json
+{
+  "message": "User 10 is not authorized. Only user 5 can confirm this payment."
+}
+```
+
+**Payment Flow:**
+1. Auction expires with bids
+2. System creates PaymentAttempt for highest bidder
+3. Email sent with 1-minute payment window
+4. User confirms payment with exact amount
+5. On success: Transaction created, Auction marked "Completed"
+6. On failure: Instant retry for next-highest bidder
+7. Max 3 attempts before auction marked "Failed"
+
+**Test Modes:**
+- **Normal:** `POST /api/products/1/confirm-payment` with correct amount
+- **Amount Mismatch:** Send wrong amount → Instant retry
+- **Test Instant Fail:** Add header `testInstantFail: true` → Instant retry
+- **Window Expired:** Wait 1+ minute → Next retry after 30 seconds
+
+---
+
+#### 📊 **Get Transactions**
+```http
+GET /api/transactions
+```
+**Auth Required:** ✅ Yes (Admin sees all, Users see only own)
+
+**Query Parameters:**
+- `userId` (integer, optional) - Filter by user ID (Admin only)
+- `auctionId` (integer, optional) - Filter by auction ID
+- `status` (string, optional) - Filter by status ("Success" or "Failed")
+- `fromDate` (datetime, optional) - Filter from date (inclusive)
+- `toDate` (datetime, optional) - Filter to date (inclusive)
+- `pageNumber` (integer, optional, default: 1) - Page number
+- `pageSize` (integer, optional, default: 10) - Items per page
+
+**Response (200):**
+```json
+{
+  "items": [
+    {
+      "transactionId": 1,
+      "paymentId": 1,
+      "auctionId": 1,
+      "productId": 1,
+      "productName": "Vintage Watch",
+      "bidderId": 5,
+      "bidderEmail": "user@example.com",
+      "status": "Success",
+      "amount": 1500.00,
+      "attemptNumber": 1,
+      "timestamp": "2024-01-15T10:30:00Z"
+    }
+  ],
+  "totalCount": 25,
+  "pageNumber": 1,
+  "pageSize": 10,
+  "totalPages": 3
+}
+```
+
+**Examples:**
+
+**Get all own transactions (User):**
+```
+GET /api/transactions?pageNumber=1&pageSize=10
+```
+
+**Filter by status (Admin):**
+```
+GET /api/transactions?status=Success&pageNumber=1&pageSize=20
+```
+
+**Filter by user ID (Admin only):**
+```
+GET /api/transactions?userId=5&pageNumber=1&pageSize=10
+```
+
+**Filter by date range:**
+```
+GET /api/transactions?fromDate=2024-01-01&toDate=2024-01-31
+```
+
+**Filter by auction:**
+```
+GET /api/transactions?auctionId=1
+```
+
+**Complex filter (Admin):**
+```
+GET /api/transactions?userId=5&status=Success&fromDate=2024-01-01&pageNumber=1&pageSize=10
 ```
 
 ---
