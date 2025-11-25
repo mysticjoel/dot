@@ -16,6 +16,7 @@ using WebApiTemplate.Repository.DatabaseOperation.Interface;
 using WebApiTemplate.Service;
 using WebApiTemplate.Service.Interface;
 using WebApiTemplate.Validators;
+using WebApiTemplate.Middleware;
 #endregion
 
 var builder = WebApplication.CreateBuilder(args);
@@ -101,6 +102,9 @@ builder.Services.AddHostedService<AuctionMonitoringService>();
 // Authentication services
 builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+
+// Query parser service
+builder.Services.AddScoped<WebApiTemplate.Service.QueryParser.IAsqlParser, WebApiTemplate.Service.QueryParser.AsqlParser>();
 
 // -----------------------------
 // JWT Authentication Configuration
@@ -226,6 +230,10 @@ app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
+
+// Request logging middleware with correlation IDs
+app.UseRequestLogging();
+
 app.UseAuthentication(); // Must come before UseAuthorization
 app.UseAuthorization();
 app.MapControllers();

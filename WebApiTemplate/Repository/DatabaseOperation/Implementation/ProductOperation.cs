@@ -17,48 +17,19 @@ namespace WebApiTemplate.Repository.DatabaseOperation.Implementation
             _dbContext = context;
         }
 
-        ///<inheritdoc/>
-        public async Task<List<Product>> GetProductsWithFiltersAsync(ProductFilterDto filters)
+        /// <summary>
+        /// Gets the base queryable for products with all navigation properties included
+        /// </summary>
+        /// <returns>Base queryable with includes</returns>
+        private IQueryable<Product> GetProductBaseQuery()
         {
-            var query = _dbContext.Products
+            return _dbContext.Products
                 .Include(p => p.Auction)
                 .Include(p => p.HighestBid)
                 .Include(p => p.Owner)
                 .AsNoTracking();
-
-            // Apply filters
-            if (!string.IsNullOrWhiteSpace(filters.Category))
-            {
-                query = query.Where(p => p.Category == filters.Category);
-            }
-
-            if (filters.MinPrice.HasValue)
-            {
-                query = query.Where(p => p.StartingPrice >= filters.MinPrice.Value);
-            }
-
-            if (filters.MaxPrice.HasValue)
-            {
-                query = query.Where(p => p.StartingPrice <= filters.MaxPrice.Value);
-            }
-
-            if (!string.IsNullOrWhiteSpace(filters.Status))
-            {
-                query = query.Where(p => p.Auction != null && p.Auction.Status == filters.Status);
-            }
-
-            if (filters.MinDuration.HasValue)
-            {
-                query = query.Where(p => p.AuctionDuration >= filters.MinDuration.Value);
-            }
-
-            if (filters.MaxDuration.HasValue)
-            {
-                query = query.Where(p => p.AuctionDuration <= filters.MaxDuration.Value);
-            }
-
-            return await query.ToListAsync();
         }
+
 
         ///<inheritdoc/>
         public async Task<List<Auction>> GetActiveAuctionsAsync()
@@ -72,6 +43,47 @@ namespace WebApiTemplate.Repository.DatabaseOperation.Implementation
                 .AsNoTracking()
                 .Where(a => a.Status == "Active" && a.ExpiryTime > now)
                 .ToListAsync();
+        }
+
+        ///<inheritdoc/>
+        public async Task<(int TotalCount, List<Auction> Items)> GetActiveAuctionsAsync(PaginationDto pagination)
+        {
+            var now = DateTime.UtcNow;
+
+            var query = _dbContext.Auctions
+                .Include(a => a.Product)
+                .Include(a => a.HighestBid)
+                    .ThenInclude(b => b!.Bidder)
+                .AsNoTracking()
+                .Where(a => a.Status == "Active" && a.ExpiryTime > now);
+
+            var totalCount = await query.CountAsync();
+
+            var items = await query
+                .Skip((pagination.PageNumber - 1) * pagination.PageSize)
+                .Take(pagination.PageSize)
+                .ToListAsync();
+
+            return (totalCount, items);
+        }
+
+        ///<inheritdoc/>
+        public async Task<(int TotalCount, List<Product> Items)> GetProductsAsync(IQueryable<Product>? query, PaginationDto pagination)
+        {
+            // If no query is provided, start with base query
+            if (query == null)
+            {
+                query = GetProductBaseQuery();
+            }
+
+            var totalCount = await query.CountAsync();
+
+            var items = await query
+                .Skip((pagination.PageNumber - 1) * pagination.PageSize)
+                .Take(pagination.PageSize)
+                .ToListAsync();
+
+            return (totalCount, items);
         }
 
         ///<inheritdoc/>
@@ -89,11 +101,7 @@ namespace WebApiTemplate.Repository.DatabaseOperation.Implementation
         ///<inheritdoc/>
         public async Task<Product?> GetProductByIdAsync(int id)
         {
-            return await _dbContext.Products
-                .Include(p => p.Auction)
-                .Include(p => p.HighestBid)
-                .Include(p => p.Owner)
-                .AsNoTracking()
+            return await GetProductBaseQuery()
                 .FirstOrDefaultAsync(p => p.ProductId == id);
         }
 

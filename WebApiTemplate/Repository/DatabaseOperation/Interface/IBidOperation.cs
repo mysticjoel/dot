@@ -37,11 +37,20 @@ namespace WebApiTemplate.Repository.DatabaseOperation.Interface
         Task<List<Bid>> GetBidsForAuctionAsync(int auctionId);
 
         /// <summary>
-        /// Gets filtered bids based on query parameters
+        /// Gets paginated bids for a specific auction with bidder information
         /// </summary>
-        /// <param name="filter">Filter criteria</param>
-        /// <returns>List of bids matching filter criteria</returns>
-        Task<List<Bid>> GetFilteredBidsAsync(BidFilterDto filter);
+        /// <param name="auctionId">Auction ID</param>
+        /// <param name="pagination">Pagination parameters</param>
+        /// <returns>Tuple of (total count, bids for current page)</returns>
+        Task<(int TotalCount, List<Bid> Items)> GetBidsForAuctionAsync(int auctionId, PaginationDto pagination);
+
+        /// <summary>
+        /// Gets paginated filtered bids based on query
+        /// </summary>
+        /// <param name="query">Pre-filtered queryable (optional)</param>
+        /// <param name="pagination">Pagination parameters</param>
+        /// <returns>Tuple of (total count, bids for current page)</returns>
+        Task<(int TotalCount, List<Bid> Items)> GetFilteredBidsAsync(IQueryable<Bid>? query, PaginationDto pagination);
 
         /// <summary>
         /// Updates an existing auction

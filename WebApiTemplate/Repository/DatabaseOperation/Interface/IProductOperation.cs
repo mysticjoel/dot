@@ -6,17 +6,25 @@ namespace WebApiTemplate.Repository.DatabaseOperation.Interface
     public interface IProductOperation
     {
         /// <summary>
-        /// Gets products with optional filters including related auction and bid data
+        /// Gets paginated products with optional query filter
         /// </summary>
-        /// <param name="filters">Filter criteria</param>
-        /// <returns>List of products matching filters</returns>
-        Task<List<Product>> GetProductsWithFiltersAsync(ProductFilterDto filters);
+        /// <param name="query">Pre-filtered queryable (optional)</param>
+        /// <param name="pagination">Pagination parameters</param>
+        /// <returns>Tuple of (total count, products for current page)</returns>
+        Task<(int TotalCount, List<Product> Items)> GetProductsAsync(IQueryable<Product>? query, PaginationDto pagination);
 
         /// <summary>
         /// Gets all active auctions with product and bid information
         /// </summary>
         /// <returns>List of active auctions</returns>
         Task<List<Auction>> GetActiveAuctionsAsync();
+
+        /// <summary>
+        /// Gets paginated active auctions with product and bid information
+        /// </summary>
+        /// <param name="pagination">Pagination parameters</param>
+        /// <returns>Tuple of (total count, auctions for current page)</returns>
+        Task<(int TotalCount, List<Auction> Items)> GetActiveAuctionsAsync(PaginationDto pagination);
 
         /// <summary>
         /// Gets detailed auction information by product ID including all bids

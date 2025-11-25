@@ -137,14 +137,20 @@ namespace WebApiTemplate.Service
         /// <returns>User profile details or null if not found</returns>
         public async Task<UserProfileDto?> GetUserProfileAsync(int userId)
         {
+            _logger.LogInformation("Retrieving profile for user: UserId={UserId}", userId);
+
             var user = await _dbContext.Users
                 .AsNoTracking()
                 .FirstOrDefaultAsync(u => u.UserId == userId);
 
             if (user == null)
             {
+                _logger.LogWarning("User profile not found: UserId={UserId}", userId);
                 return null;
             }
+
+            _logger.LogInformation("User profile retrieved successfully: UserId={UserId}, Email={Email}", 
+                user.UserId, user.Email);
 
             return new UserProfileDto
             {

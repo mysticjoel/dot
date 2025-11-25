@@ -19,6 +19,19 @@ namespace WebApiTemplate.Repository.DatabaseOperation.Implementation
         }
 
         /// <summary>
+        /// Gets the base queryable for bids with all navigation properties included
+        /// </summary>
+        /// <returns>Base queryable with includes</returns>
+        private IQueryable<Bid> GetBidBaseQuery()
+        {
+            return _context.Bids
+                .AsNoTracking()
+                .Include(b => b.Bidder)
+                .Include(b => b.Auction)
+                    .ThenInclude(a => a.Product);
+        }
+
+        /// <summary>
         /// Gets an auction by ID with product and highest bid information
         /// </summary>
         public async Task<Auction?> GetAuctionByIdAsync(int auctionId)
@@ -85,53 +98,47 @@ namespace WebApiTemplate.Repository.DatabaseOperation.Implementation
         }
 
         /// <summary>
-        /// Gets filtered bids based on query parameters
+        /// Gets paginated filtered bids based on query
         /// </summary>
-        public async Task<List<Bid>> GetFilteredBidsAsync(BidFilterDto filter)
+        public async Task<(int TotalCount, List<Bid> Items)> GetFilteredBidsAsync(IQueryable<Bid>? query, PaginationDto pagination)
+        {
+            // If no query is provided, start with base query
+            if (query == null)
+            {
+                query = GetBidBaseQuery();
+            }
+
+            query = query.OrderByDescending(b => b.Timestamp);
+
+            var totalCount = await query.CountAsync();
+
+            var items = await query
+                .Skip((pagination.PageNumber - 1) * pagination.PageSize)
+                .Take(pagination.PageSize)
+                .ToListAsync();
+
+            return (totalCount, items);
+        }
+
+        /// <summary>
+        /// Gets paginated bids for a specific auction with bidder information
+        /// </summary>
+        public async Task<(int TotalCount, List<Bid> Items)> GetBidsForAuctionAsync(int auctionId, PaginationDto pagination)
         {
             var query = _context.Bids
                 .AsNoTracking()
                 .Include(b => b.Bidder)
-                .Include(b => b.Auction)
-                    .ThenInclude(a => a.Product)
-                .AsQueryable();
+                .Where(b => b.AuctionId == auctionId)
+                .OrderByDescending(b => b.Timestamp);
 
-            // Apply filters
-            if (filter.UserId.HasValue)
-            {
-                query = query.Where(b => b.BidderId == filter.UserId.Value);
-            }
+            var totalCount = await query.CountAsync();
 
-            if (filter.ProductId.HasValue)
-            {
-                query = query.Where(b => b.Auction.ProductId == filter.ProductId.Value);
-            }
-
-            if (filter.MinAmount.HasValue)
-            {
-                query = query.Where(b => b.Amount >= filter.MinAmount.Value);
-            }
-
-            if (filter.MaxAmount.HasValue)
-            {
-                query = query.Where(b => b.Amount <= filter.MaxAmount.Value);
-            }
-
-            if (filter.StartDate.HasValue)
-            {
-                query = query.Where(b => b.Timestamp >= filter.StartDate.Value);
-            }
-
-            if (filter.EndDate.HasValue)
-            {
-                // Include the entire end date by adding a day
-                var endDateInclusive = filter.EndDate.Value.AddDays(1);
-                query = query.Where(b => b.Timestamp < endDateInclusive);
-            }
-
-            return await query
-                .OrderByDescending(b => b.Timestamp)
+            var items = await query
+                .Skip((pagination.PageNumber - 1) * pagination.PageSize)
+                .Take(pagination.PageSize)
                 .ToListAsync();
+
+            return (totalCount, items);
         }
 
         /// <summary>

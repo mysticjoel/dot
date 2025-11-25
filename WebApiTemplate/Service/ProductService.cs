@@ -1,7 +1,9 @@
 ﻿using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using OfficeOpenXml;
 using WebApiTemplate.Models;
+using WebApiTemplate.Repository.Database;
 using WebApiTemplate.Repository.Database.Entities;
 using WebApiTemplate.Repository.DatabaseOperation.Interface;
 using WebApiTemplate.Service.Helpers;
@@ -12,22 +14,82 @@ namespace WebApiTemplate.Service
     public class ProductService : IProductService
     {
         private readonly IProductOperation _productOperation;
+        private readonly QueryParser.IAsqlParser _asqlParser;
+        private readonly WenApiTemplateDbContext _dbContext;
         private readonly ILogger<ProductService> _logger;
 
         public ProductService(
             IProductOperation productOperation,
+            QueryParser.IAsqlParser asqlParser,
+            WenApiTemplateDbContext dbContext,
             ILogger<ProductService> logger)
         {
             _productOperation = productOperation;
+            _asqlParser = asqlParser;
+            _dbContext = dbContext;
             _logger = logger;
         }
 
-        ///<inheritdoc/>
-        public async Task<List<ProductListDto>> GetProductsAsync(ProductFilterDto filters)
-        {
-            var products = await _productOperation.GetProductsWithFiltersAsync(filters);
 
-            return products.Select(p => new ProductListDto
+        /// <summary>
+        /// Maps an Auction entity to ActiveAuctionDto
+        /// </summary>
+        /// <param name="auction">Auction entity</param>
+        /// <returns>Mapped ActiveAuctionDto</returns>
+        private static ActiveAuctionDto MapToActiveAuctionDto(Auction auction)
+        {
+            return new ActiveAuctionDto
+            {
+                ProductId = auction.ProductId,
+                Name = auction.Product.Name,
+                Description = auction.Product.Description,
+                Category = auction.Product.Category,
+                StartingPrice = auction.Product.StartingPrice,
+                HighestBidAmount = auction.HighestBid?.Amount,
+                HighestBidderName = AuctionHelpers.GetUserDisplayName(auction.HighestBid?.Bidder),
+                ExpiryTime = auction.ExpiryTime,
+                TimeRemainingMinutes = AuctionHelpers.CalculateTimeRemainingMinutes(auction.ExpiryTime) ?? 0,
+                AuctionStatus = auction.Status
+            };
+        }
+
+        ///<inheritdoc/>
+        public async Task<List<ActiveAuctionDto>> GetActiveAuctionsAsync()
+        {
+            var auctions = await _productOperation.GetActiveAuctionsAsync();
+            return auctions.Select(MapToActiveAuctionDto).ToList();
+        }
+
+        ///<inheritdoc/>
+        public async Task<PaginatedResultDto<ActiveAuctionDto>> GetActiveAuctionsAsync(PaginationDto pagination)
+        {
+            var (totalCount, auctions) = await _productOperation.GetActiveAuctionsAsync(pagination);
+            var items = auctions.Select(MapToActiveAuctionDto).ToList();
+            return new PaginatedResultDto<ActiveAuctionDto>(items, totalCount, pagination.PageNumber, pagination.PageSize);
+        }
+
+        ///<inheritdoc/>
+        public async Task<PaginatedResultDto<ProductListDto>> GetProductsAsync(string? asqlQuery, PaginationDto pagination)
+        {
+            _logger.LogInformation("Getting products with ASQL query: {Query}, Page: {PageNumber}, PageSize: {PageSize}",
+                asqlQuery ?? "(none)", pagination.PageNumber, pagination.PageSize);
+
+            // Start with base query
+            var query = _dbContext.Products
+                .Include(p => p.Auction)
+                .Include(p => p.HighestBid)
+                .Include(p => p.Owner)
+                .AsNoTracking();
+
+            // Apply ASQL filter if provided
+            if (!string.IsNullOrWhiteSpace(asqlQuery))
+            {
+                query = _asqlParser.ApplyQuery(query, asqlQuery);
+            }
+
+            var (totalCount, products) = await _productOperation.GetProductsAsync(query, pagination);
+
+            var items = products.Select(p => new ProductListDto
             {
                 ProductId = p.ProductId,
                 Name = p.Name,
@@ -41,39 +103,30 @@ namespace WebApiTemplate.Service
                 TimeRemainingMinutes = AuctionHelpers.CalculateTimeRemainingMinutes(p.ExpiryTime),
                 AuctionStatus = p.Auction?.Status
             }).ToList();
-        }
 
-        ///<inheritdoc/>
-        public async Task<List<ActiveAuctionDto>> GetActiveAuctionsAsync()
-        {
-            var auctions = await _productOperation.GetActiveAuctionsAsync();
+            _logger.LogInformation("Retrieved {TotalCount} total products, returning {ItemCount} items",
+                totalCount, items.Count);
 
-            return auctions.Select(a => new ActiveAuctionDto
-            {
-                ProductId = a.ProductId,
-                Name = a.Product.Name,
-                Description = a.Product.Description,
-                Category = a.Product.Category,
-                StartingPrice = a.Product.StartingPrice,
-                HighestBidAmount = a.HighestBid?.Amount,
-                HighestBidderName = AuctionHelpers.GetUserDisplayName(a.HighestBid?.Bidder),
-                ExpiryTime = a.ExpiryTime,
-                TimeRemainingMinutes = AuctionHelpers.CalculateTimeRemainingMinutes(a.ExpiryTime) ?? 0,
-                AuctionStatus = a.Status
-            }).ToList();
+            return new PaginatedResultDto<ProductListDto>(items, totalCount, pagination.PageNumber, pagination.PageSize);
         }
 
         ///<inheritdoc/>
         public async Task<AuctionDetailDto?> GetAuctionDetailAsync(int productId)
         {
+            _logger.LogInformation("Retrieving auction detail for product: ProductId={ProductId}", productId);
+
             var auction = await _productOperation.GetAuctionDetailByIdAsync(productId);
             if (auction == null)
             {
+                _logger.LogWarning("Auction not found for product: ProductId={ProductId}", productId);
                 return null;
             }
 
             // Get all bids for this auction
             var bids = await GetBidsForAuctionAsync(auction.AuctionId);
+
+            _logger.LogInformation("Auction detail retrieved: ProductId={ProductId}, AuctionId={AuctionId}, Status={Status}, BidCount={BidCount}",
+                productId, auction.AuctionId, auction.Status, bids.Count);
 
             return new AuctionDetailDto
             {
@@ -96,6 +149,9 @@ namespace WebApiTemplate.Service
         ///<inheritdoc/>
         public async Task<ProductListDto> CreateProductAsync(CreateProductDto dto, int userId)
         {
+            _logger.LogInformation("Creating product: Name={Name}, Category={Category}, StartingPrice={StartingPrice}, Duration={Duration}min, OwnerId={OwnerId}",
+                dto.Name, dto.Category, dto.StartingPrice, dto.AuctionDuration, userId);
+
             var expiryTime = AuctionHelpers.CalculateExpiryTime(dto.AuctionDuration);
 
             // Create product entity
@@ -124,8 +180,8 @@ namespace WebApiTemplate.Service
 
             await _productOperation.UpdateAuctionAsync(auction);
 
-            _logger.LogInformation("Product {ProductId} created with auction by user {UserId}", 
-                createdProduct.ProductId, userId);
+            _logger.LogInformation("Product created successfully: ProductId={ProductId}, AuctionId={AuctionId}, ExpiryTime={ExpiryTime}, OwnerId={OwnerId}",
+                createdProduct.ProductId, auction.AuctionId, expiryTime, userId);
 
             return new ProductListDto
             {
@@ -328,10 +384,13 @@ namespace WebApiTemplate.Service
         ///<inheritdoc/>
         public async Task<ProductListDto> UpdateProductAsync(int productId, UpdateProductDto dto)
         {
+            _logger.LogInformation("Updating product: ProductId={ProductId}", productId);
+
             // Check if product has active bids
             var hasActiveBids = await _productOperation.HasActiveBidsAsync(productId);
             if (hasActiveBids)
             {
+                _logger.LogWarning("Cannot update product {ProductId} - has active bids", productId);
                 throw new InvalidOperationException("Cannot update product with active bids");
             }
 
@@ -339,6 +398,7 @@ namespace WebApiTemplate.Service
             var product = await _productOperation.GetProductByIdAsync(productId);
             if (product == null)
             {
+                _logger.LogWarning("Product {ProductId} not found for update", productId);
                 throw new KeyNotFoundException($"Product with ID {productId} not found");
             }
 
@@ -381,7 +441,8 @@ namespace WebApiTemplate.Service
             // Save updates
             var updatedProduct = await _productOperation.UpdateProductAsync(product);
 
-            _logger.LogInformation("Product {ProductId} updated", productId);
+            _logger.LogInformation("Product updated successfully: ProductId={ProductId}, Name={Name}, Category={Category}, StartingPrice={StartingPrice}",
+                productId, updatedProduct.Name, updatedProduct.Category, updatedProduct.StartingPrice);
 
             return new ProductListDto
             {
@@ -402,10 +463,13 @@ namespace WebApiTemplate.Service
         ///<inheritdoc/>
         public async Task DeleteProductAsync(int productId)
         {
+            _logger.LogInformation("Deleting product: ProductId={ProductId}", productId);
+
             // Check if product has active bids
             var hasActiveBids = await _productOperation.HasActiveBidsAsync(productId);
             if (hasActiveBids)
             {
+                _logger.LogWarning("Cannot delete product {ProductId} - has active bids", productId);
                 throw new InvalidOperationException("Cannot delete product with active bids");
             }
 
@@ -413,27 +477,34 @@ namespace WebApiTemplate.Service
             var product = await _productOperation.GetProductByIdAsync(productId);
             if (product == null)
             {
+                _logger.LogWarning("Product {ProductId} not found for deletion", productId);
                 throw new KeyNotFoundException($"Product with ID {productId} not found");
             }
 
             await _productOperation.DeleteProductAsync(productId);
 
-            _logger.LogInformation("Product {ProductId} deleted", productId);
+            _logger.LogInformation("Product deleted successfully: ProductId={ProductId}, Name={Name}", 
+                productId, product.Name);
         }
 
         ///<inheritdoc/>
         public async Task FinalizeAuctionAsync(int productId)
         {
+            _logger.LogInformation("Finalizing auction for product: ProductId={ProductId}", productId);
+
             var auction = await _productOperation.GetAuctionByProductIdAsync(productId);
             if (auction == null)
             {
+                _logger.LogWarning("Auction not found for product {ProductId}", productId);
                 throw new KeyNotFoundException($"Auction for product {productId} not found");
             }
 
+            var previousStatus = auction.Status;
             auction.Status = "Completed";
             await _productOperation.UpdateAuctionAsync(auction);
 
-            _logger.LogInformation("Auction for product {ProductId} finalized", productId);
+            _logger.LogInformation("Auction finalized successfully: AuctionId={AuctionId}, ProductId={ProductId}, PreviousStatus={PreviousStatus}, NewStatus=Completed",
+                auction.AuctionId, productId, previousStatus);
         }
 
         /// <summary>

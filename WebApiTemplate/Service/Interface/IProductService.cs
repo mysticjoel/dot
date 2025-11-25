@@ -6,17 +6,25 @@ namespace WebApiTemplate.Service.Interface
     public interface IProductService
     {
         /// <summary>
-        /// Gets products with optional filters
+        /// Gets paginated products with optional ASQL query filter
         /// </summary>
-        /// <param name="filters">Filter criteria</param>
-        /// <returns>List of products with auction details</returns>
-        Task<List<ProductListDto>> GetProductsAsync(ProductFilterDto filters);
+        /// <param name="asqlQuery">ASQL query string (optional)</param>
+        /// <param name="pagination">Pagination parameters</param>
+        /// <returns>Paginated products with auction details</returns>
+        Task<PaginatedResultDto<ProductListDto>> GetProductsAsync(string? asqlQuery, PaginationDto pagination);
 
         /// <summary>
         /// Gets all active auctions with current bid information
         /// </summary>
         /// <returns>List of active auctions</returns>
         Task<List<ActiveAuctionDto>> GetActiveAuctionsAsync();
+
+        /// <summary>
+        /// Gets paginated active auctions with current bid information
+        /// </summary>
+        /// <param name="pagination">Pagination parameters</param>
+        /// <returns>Paginated active auctions</returns>
+        Task<PaginatedResultDto<ActiveAuctionDto>> GetActiveAuctionsAsync(PaginationDto pagination);
 
         /// <summary>
         /// Gets detailed information about a specific auction including all bids

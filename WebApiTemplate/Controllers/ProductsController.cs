@@ -19,61 +19,81 @@ namespace WebApiTemplate.Controllers
         private readonly IProductService _productService;
         private readonly IValidator<CreateProductDto> _createProductValidator;
         private readonly IValidator<UpdateProductDto> _updateProductValidator;
-        private readonly IValidator<ProductFilterDto> _filterValidator;
+        private readonly Service.QueryParser.IAsqlParser _asqlParser;
         private readonly ILogger<ProductsController> _logger;
 
         public ProductsController(
             IProductService productService,
             IValidator<CreateProductDto> createProductValidator,
             IValidator<UpdateProductDto> updateProductValidator,
-            IValidator<ProductFilterDto> filterValidator,
+            Service.QueryParser.IAsqlParser asqlParser,
             ILogger<ProductsController> logger)
         {
             _productService = productService;
             _createProductValidator = createProductValidator;
             _updateProductValidator = updateProductValidator;
-            _filterValidator = filterValidator;
+            _asqlParser = asqlParser;
             _logger = logger;
         }
 
         /// <summary>
-        /// Get a list of products with optional filters
+        /// Get a paginated list of products with ASQL query filter
         /// </summary>
-        /// <param name="filters">Filter criteria (category, price range, status, duration)</param>
-        /// <returns>List of products</returns>
+        /// <param name="asql">ASQL query string (e.g., "productId=1 OR name=\"Vintage Watch\"")</param>
+        /// <param name="pagination">Pagination parameters (page number, page size)</param>
+        /// <returns>Paginated list of products</returns>
+        /// <remarks>
+        /// Example queries:
+        /// - productId=1 OR name="Vintage Watch"
+        /// - category="Electronics" AND startingPrice>=1000
+        /// - category in ["Electronics", "Art", "Fashion"]
+        /// - startingPrice&lt;5000
+        /// </remarks>
         [HttpGet]
-        [ProducesResponseType(typeof(List<ProductListDto>), StatusCodes.Status200OK)]
-        public async Task<IActionResult> GetProducts([FromQuery] ProductFilterDto filters)
+        [ProducesResponseType(typeof(PaginatedResultDto<ProductListDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> GetProducts([FromQuery] string? asql, [FromQuery] PaginationDto pagination)
         {
             try
             {
-                var validationResult = await _filterValidator.ValidateAsync(filters);
-                if (!validationResult.IsValid)
+                // Validate ASQL query if provided
+                if (!string.IsNullOrWhiteSpace(asql))
                 {
-                    return BadRequest(new { message = "Validation failed", errors = validationResult.Errors });
+                    var (isValid, errorMessage) = _asqlParser.ValidateQuery(asql);
+                    if (!isValid)
+                    {
+                        _logger.LogWarning("Invalid ASQL query: {Query}. Error: {Error}", asql, errorMessage);
+                        return BadRequest(new { message = "Invalid ASQL query", error = errorMessage });
+                    }
                 }
 
-                var products = await _productService.GetProductsAsync(filters);
+                var products = await _productService.GetProductsAsync(asql, pagination);
                 return Ok(products);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, "Invalid ASQL query: {Query}", asql);
+                return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting products");
+                _logger.LogError(ex, "Error getting products with ASQL query: {Query}", asql);
                 return StatusCode(500, new { message = "An error occurred while retrieving products" });
             }
         }
 
         /// <summary>
-        /// Get active auctions showing highest bid and time remaining
+        /// Get paginated active auctions showing highest bid and time remaining
         /// </summary>
-        /// <returns>List of active auctions</returns>
+        /// <param name="pagination">Pagination parameters (page number, page size)</param>
+        /// <returns>Paginated list of active auctions</returns>
         [HttpGet("active")]
-        [ProducesResponseType(typeof(List<ActiveAuctionDto>), StatusCodes.Status200OK)]
-        public async Task<IActionResult> GetActiveAuctions()
+        [ProducesResponseType(typeof(PaginatedResultDto<ActiveAuctionDto>), StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetActiveAuctions([FromQuery] PaginationDto pagination)
         {
             try
             {
-                var auctions = await _productService.GetActiveAuctionsAsync();
+                var auctions = await _productService.GetActiveAuctionsAsync(pagination);
                 return Ok(auctions);
             }
             catch (Exception ex)

@@ -24,11 +24,20 @@ namespace WebApiTemplate.Service.Interface
         Task<List<BidDto>> GetBidsForAuctionAsync(int auctionId);
 
         /// <summary>
-        /// Gets filtered bids based on query parameters
+        /// Gets paginated bids for a specific auction
         /// </summary>
-        /// <param name="filter">Filter criteria</param>
-        /// <returns>List of bids matching filter criteria</returns>
-        Task<List<BidDto>> GetFilteredBidsAsync(BidFilterDto filter);
+        /// <param name="auctionId">Auction ID</param>
+        /// <param name="pagination">Pagination parameters</param>
+        /// <returns>Paginated bids ordered by timestamp descending</returns>
+        Task<PaginatedResultDto<BidDto>> GetBidsForAuctionAsync(int auctionId, PaginationDto pagination);
+
+        /// <summary>
+        /// Gets paginated filtered bids based on ASQL query
+        /// </summary>
+        /// <param name="asqlQuery">ASQL query string (optional)</param>
+        /// <param name="pagination">Pagination parameters</param>
+        /// <returns>Paginated bids matching filter criteria</returns>
+        Task<PaginatedResultDto<BidDto>> GetFilteredBidsAsync(string? asqlQuery, PaginationDto pagination);
     }
 }
 
