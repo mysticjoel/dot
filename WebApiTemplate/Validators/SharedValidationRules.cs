@@ -8,7 +8,7 @@ namespace WebApiTemplate.Validators
     public static class SharedValidationRules
     {
         /// <summary>
-        /// Validates product name (required, 1-200 chars)
+        /// Validates product name (required, 1-200 chars) - Non-nullable version
         /// </summary>
         public static IRuleBuilderOptions<T, string> ProductName<T>(this IRuleBuilder<T, string> ruleBuilder)
         {
@@ -20,13 +20,37 @@ namespace WebApiTemplate.Validators
         }
 
         /// <summary>
-        /// Validates product category (required, 1-100 chars)
+        /// Validates product name (nullable version for updates)
+        /// </summary>
+        public static IRuleBuilderOptions<T, string?> ProductNameNullable<T>(this IRuleBuilder<T, string?> ruleBuilder)
+        {
+            return ruleBuilder
+                .NotEmpty()
+                .WithMessage("Name cannot be empty if provided.")
+                .MaximumLength(200)
+                .WithMessage("Name must not exceed 200 characters.");
+        }
+
+        /// <summary>
+        /// Validates product category (required, 1-100 chars) - Non-nullable version
         /// </summary>
         public static IRuleBuilderOptions<T, string> ProductCategory<T>(this IRuleBuilder<T, string> ruleBuilder)
         {
             return ruleBuilder
                 .NotEmpty()
                 .WithMessage("Category is required.")
+                .MaximumLength(100)
+                .WithMessage("Category must not exceed 100 characters.");
+        }
+
+        /// <summary>
+        /// Validates product category (nullable version for updates)
+        /// </summary>
+        public static IRuleBuilderOptions<T, string?> ProductCategoryNullable<T>(this IRuleBuilder<T, string?> ruleBuilder)
+        {
+            return ruleBuilder
+                .NotEmpty()
+                .WithMessage("Category cannot be empty if provided.")
                 .MaximumLength(100)
                 .WithMessage("Category must not exceed 100 characters.");
         }
@@ -42,7 +66,7 @@ namespace WebApiTemplate.Validators
         }
 
         /// <summary>
-        /// Validates starting price (must be > 0)
+        /// Validates starting price (must be > 0) - Non-nullable version
         /// </summary>
         public static IRuleBuilderOptions<T, decimal> StartingPrice<T>(this IRuleBuilder<T, decimal> ruleBuilder)
         {
@@ -52,7 +76,17 @@ namespace WebApiTemplate.Validators
         }
 
         /// <summary>
-        /// Validates auction duration (2-1440 minutes)
+        /// Validates starting price (nullable version for updates)
+        /// </summary>
+        public static IRuleBuilderOptions<T, decimal?> StartingPriceNullable<T>(this IRuleBuilder<T, decimal?> ruleBuilder)
+        {
+            return ruleBuilder
+                .GreaterThan(0)
+                .WithMessage("Starting price must be greater than 0.");
+        }
+
+        /// <summary>
+        /// Validates auction duration (2-1440 minutes) - Non-nullable version
         /// </summary>
         public static IRuleBuilderOptions<T, int> AuctionDuration<T>(this IRuleBuilder<T, int> ruleBuilder)
         {
@@ -62,12 +96,13 @@ namespace WebApiTemplate.Validators
         }
 
         /// <summary>
-        /// Validates optional fields with condition
+        /// Validates auction duration (nullable version for updates)
         /// </summary>
-        public static IRuleBuilderOptions<T, TProperty?> WhenProvided<T, TProperty>(
-            this IRuleBuilderOptions<T, TProperty?> ruleBuilder) where TProperty : struct
+        public static IRuleBuilderOptions<T, int?> AuctionDurationNullable<T>(this IRuleBuilder<T, int?> ruleBuilder)
         {
-            return ruleBuilder;
+            return ruleBuilder
+                .InclusiveBetween(2, 1440)
+                .WithMessage("Auction duration must be between 2 minutes and 24 hours (1440 minutes).");
         }
     }
 }

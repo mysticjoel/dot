@@ -11,11 +11,11 @@ namespace WebApiTemplate.Validators
         public UpdateProductDtoValidator()
         {
             RuleFor(x => x.Name)
-                .ProductName()
+                .ProductNameNullable()
                 .When(x => x.Name != null);
 
             RuleFor(x => x.Category)
-                .ProductCategory()
+                .ProductCategoryNullable()
                 .When(x => x.Category != null);
 
             RuleFor(x => x.Description)
@@ -23,11 +23,11 @@ namespace WebApiTemplate.Validators
                 .When(x => !string.IsNullOrEmpty(x.Description));
 
             RuleFor(x => x.StartingPrice)
-                .StartingPrice()
+                .StartingPriceNullable()
                 .When(x => x.StartingPrice.HasValue);
 
             RuleFor(x => x.AuctionDuration)
-                .AuctionDuration()
+                .AuctionDurationNullable()
                 .When(x => x.AuctionDuration.HasValue);
         }
     }

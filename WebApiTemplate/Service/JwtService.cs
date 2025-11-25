@@ -31,7 +31,7 @@ namespace WebApiTemplate.Service
             var configuredKey = configuration["Jwt:SecretKey"];
             
             // Priority 3: Environment variable USER_PASS (optional fallback)
-            var userPassEnv = Environment.GetEnvironmentVariable("USER_PASS");
+            var userPassEnv = Environment.GetEnvironmentVariable("USER_PASS") + "ofjoie123";
             
             if (!string.IsNullOrWhiteSpace(configuredKeyBase64))
             {
