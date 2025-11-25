@@ -14,13 +14,16 @@ namespace WebApiTemplate.Service
     public class BidService : IBidService
     {
         private readonly IBidOperation _bidOperation;
+        private readonly IAuctionExtensionService _auctionExtensionService;
         private readonly ILogger<BidService> _logger;
 
         public BidService(
             IBidOperation bidOperation,
+            IAuctionExtensionService auctionExtensionService,
             ILogger<BidService> logger)
         {
             _bidOperation = bidOperation;
+            _auctionExtensionService = auctionExtensionService;
             _logger = logger;
         }
 
@@ -78,13 +81,17 @@ namespace WebApiTemplate.Service
                     $"Bid amount must be greater than current highest bid of {currentHighestAmount:C}.");
             }
 
-            // 7. Create and save bid entity
+            // 7. Check and extend auction if needed (anti-sniping)
+            var bidTimestamp = DateTime.UtcNow;
+            await _auctionExtensionService.CheckAndExtendAuctionAsync(auction, bidTimestamp);
+
+            // 8. Create and save bid entity
             var bid = new Bid
             {
                 AuctionId = dto.AuctionId,
                 BidderId = userId,
                 Amount = dto.Amount,
-                Timestamp = DateTime.UtcNow
+                Timestamp = bidTimestamp
             };
 
             var createdBid = await _bidOperation.PlaceBidAsync(bid);
@@ -92,7 +99,7 @@ namespace WebApiTemplate.Service
             _logger.LogInformation("Bid {BidId} successfully placed by user {UserId} on auction {AuctionId}", 
                 createdBid.BidId, userId, dto.AuctionId);
 
-            // 8. Map and return BidDto
+            // 9. Map and return BidDto
             return MapBidToDto(createdBid);
         }
 

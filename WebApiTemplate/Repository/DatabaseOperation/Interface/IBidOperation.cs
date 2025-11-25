@@ -42,6 +42,26 @@ namespace WebApiTemplate.Repository.DatabaseOperation.Interface
         /// <param name="filter">Filter criteria</param>
         /// <returns>List of bids matching filter criteria</returns>
         Task<List<Bid>> GetFilteredBidsAsync(BidFilterDto filter);
+
+        /// <summary>
+        /// Updates an existing auction
+        /// </summary>
+        /// <param name="auction">Auction entity to update</param>
+        /// <returns>Task</returns>
+        Task UpdateAuctionAsync(Auction auction);
+
+        /// <summary>
+        /// Creates an extension history record
+        /// </summary>
+        /// <param name="extension">Extension history to create</param>
+        /// <returns>Task</returns>
+        Task CreateExtensionHistoryAsync(ExtensionHistory extension);
+
+        /// <summary>
+        /// Gets all active auctions that have expired
+        /// </summary>
+        /// <returns>List of expired auctions with status "active"</returns>
+        Task<List<Auction>> GetExpiredAuctionsAsync();
     }
 }
 

@@ -7,6 +7,8 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Logging;
 using System.Text;
+using WebApiTemplate.BackgroundServices;
+using WebApiTemplate.Configuration;
 using WebApiTemplate.Data;
 using WebApiTemplate.Repository.Database;
 using WebApiTemplate.Repository.DatabaseOperation.Implementation;
@@ -85,6 +87,16 @@ builder.Services.AddScoped<IProductOperation, ProductOperation>();
 // Bid services
 builder.Services.AddScoped<IBidService, BidService>();
 builder.Services.AddScoped<IBidOperation, BidOperation>();
+
+// Auction settings configuration
+builder.Services.Configure<AuctionSettings>(
+    builder.Configuration.GetSection("AuctionSettings"));
+
+// Auction extension service
+builder.Services.AddScoped<IAuctionExtensionService, AuctionExtensionService>();
+
+// Background service for auction monitoring
+builder.Services.AddHostedService<AuctionMonitoringService>();
 
 // Authentication services
 builder.Services.AddSingleton<IJwtService, JwtService>();

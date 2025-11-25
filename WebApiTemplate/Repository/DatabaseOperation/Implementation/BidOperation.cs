@@ -133,6 +133,37 @@ namespace WebApiTemplate.Repository.DatabaseOperation.Implementation
                 .OrderByDescending(b => b.Timestamp)
                 .ToListAsync();
         }
+
+        /// <summary>
+        /// Updates an existing auction
+        /// </summary>
+        public async Task UpdateAuctionAsync(Auction auction)
+        {
+            _context.Auctions.Update(auction);
+            await _context.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Creates an extension history record
+        /// </summary>
+        public async Task CreateExtensionHistoryAsync(ExtensionHistory extension)
+        {
+            await _context.ExtensionHistories.AddAsync(extension);
+            await _context.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Gets all active auctions that have expired
+        /// </summary>
+        public async Task<List<Auction>> GetExpiredAuctionsAsync()
+        {
+            var now = DateTime.UtcNow;
+            return await _context.Auctions
+                .Include(a => a.Product)
+                .Include(a => a.HighestBid)
+                .Where(a => a.Status == Constants.AuctionStatus.Active && a.ExpiryTime < now)
+                .ToListAsync();
+        }
     }
 }
 

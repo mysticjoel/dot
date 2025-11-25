@@ -440,6 +440,259 @@ DELETE /api/products/{id}
 
 ---
 
+### 4️⃣ Bid Endpoints
+
+#### 💰 **Place a Bid on an Auction**
+```http
+POST /api/bids
+```
+**Auth Required:** ✅ Yes (User role)
+
+**Request Body:**
+```json
+{
+  "auctionId": 1,
+  "amount": 150.00
+}
+```
+
+**Validations:**
+- ✅ Bid amount must be greater than current highest bid
+- ✅ Auction status must be "active"
+- ✅ User cannot bid on their own product
+- ✅ Multiple bids allowed (must outbid previous highest)
+
+**Response (201 Created):**
+```json
+{
+  "bidId": 1,
+  "bidderId": 2,
+  "bidderName": "John Doe",
+  "amount": 150.00,
+  "timestamp": "2025-11-26T10:30:00Z"
+}
+```
+
+**Response (400) - Bid too low:**
+```json
+{
+  "message": "Bid amount must be greater than current highest bid of $100.00."
+}
+```
+
+**Response (400) - Auction not active:**
+```json
+{
+  "message": "Auction is not active."
+}
+```
+
+**Response (403) - Own product:**
+```json
+{
+  "message": "You cannot bid on your own product."
+}
+```
+
+**Response (404) - Auction not found:**
+```json
+{
+  "message": "Auction not found."
+}
+```
+
+**🔔 Anti-Sniping Feature:**
+When a bid is placed within the last 1 minute of auction expiry, the auction automatically extends by 1 minute. This can happen multiple times to prevent last-second sniping.
+
+---
+
+#### 📋 **Get All Bids for an Auction**
+```http
+GET /api/bids/{auctionId}
+```
+**Auth Required:** ✅ Yes (Any authenticated user)
+
+**Example:** `GET /api/bids/1`
+
+**Response (200):**
+```json
+[
+  {
+    "bidId": 3,
+    "bidderId": 2,
+    "bidderName": "John Doe",
+    "amount": 150.00,
+    "timestamp": "2025-11-26T10:30:00Z"
+  },
+  {
+    "bidId": 2,
+    "bidderId": 3,
+    "bidderName": "Jane Smith",
+    "amount": 120.00,
+    "timestamp": "2025-11-26T10:15:00Z"
+  },
+  {
+    "bidId": 1,
+    "bidderId": 2,
+    "bidderName": "John Doe",
+    "amount": 100.00,
+    "timestamp": "2025-11-26T10:00:00Z"
+  }
+]
+```
+
+**Note:** Bids are returned in descending order by timestamp (newest first)
+
+**Response (404) - Auction not found:**
+```json
+{
+  "message": "Auction not found."
+}
+```
+
+---
+
+#### 🔍 **Filter Bids with Query Parameters**
+```http
+GET /api/bids
+```
+**Auth Required:** ✅ Yes (Any authenticated user)
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| userId | int | ❌ | Filter by bidder user ID |
+| productId | int | ❌ | Filter by product ID |
+| minAmount | decimal | ❌ | Minimum bid amount |
+| maxAmount | decimal | ❌ | Maximum bid amount |
+| startDate | datetime | ❌ | Start date for bid timestamp |
+| endDate | datetime | ❌ | End date for bid timestamp |
+
+**Example Requests:**
+
+**Filter by user:**
+```
+GET /api/bids?userId=2
+```
+
+**Filter by product:**
+```
+GET /api/bids?productId=1
+```
+
+**Filter by amount range:**
+```
+GET /api/bids?minAmount=100&maxAmount=500
+```
+
+**Filter by date range:**
+```
+GET /api/bids?startDate=2025-01-01&endDate=2025-01-31
+```
+
+**Combine multiple filters:**
+```
+GET /api/bids?userId=2&minAmount=100&startDate=2025-01-01
+```
+
+**Response (200):**
+```json
+[
+  {
+    "bidId": 5,
+    "bidderId": 2,
+    "bidderName": "John Doe",
+    "amount": 250.00,
+    "timestamp": "2025-11-26T11:00:00Z"
+  },
+  {
+    "bidId": 3,
+    "bidderId": 2,
+    "bidderName": "John Doe",
+    "amount": 150.00,
+    "timestamp": "2025-11-26T10:30:00Z"
+  }
+]
+```
+
+**Response (400) - Invalid filters:**
+```json
+{
+  "message": "Validation failed",
+  "errors": [
+    "Maximum amount must be greater than or equal to minimum amount."
+  ]
+}
+```
+
+---
+
+## ⏱️ Dynamic Auction Extension (Anti-Sniping)
+
+### How It Works
+
+To prevent last-minute bid sniping, BidSphere automatically extends auctions when bids are placed near the expiry time.
+
+**Extension Rules:**
+1. ⏰ If a bid is placed within the **last 1 minute** of auction expiry
+2. 🔄 The auction automatically extends by **+1 minute**
+3. ♾️ Extension can occur **multiple times** (no limit)
+4. 📝 Each extension is **tracked** with timestamp in ExtensionHistory
+
+**Example Timeline:**
+```
+Auction Expiry: 10:00:00
+Bid at 09:59:30 → Extends to 10:01:00
+Bid at 10:00:30 → Extends to 10:02:00
+Bid at 10:01:45 → Extends to 10:03:00
+...continues until no bids within last minute
+```
+
+### Configuration
+
+Extension behavior is configurable in `appsettings.json`:
+
+```json
+"AuctionSettings": {
+  "ExtensionThresholdMinutes": 1,
+  "ExtensionDurationMinutes": 1,
+  "MonitoringIntervalSeconds": 30
+}
+```
+
+**Settings Explained:**
+- **ExtensionThresholdMinutes** (default: 1)
+  - Time window before expiry that triggers extension
+  - If bid placed within this time, auction extends
+
+- **ExtensionDurationMinutes** (default: 1)
+  - How much time to add when extending
+  - Auction expiry moves forward by this amount
+
+- **MonitoringIntervalSeconds** (default: 30)
+  - How often background service checks for expired auctions
+  - Lower value = more frequent checks (more resource intensive)
+
+### Auction Finalization
+
+**Background Service:**
+A background service (`AuctionMonitoringService`) runs continuously to finalize expired auctions:
+
+- ⏱️ Checks every 30 seconds (configurable)
+- 🔍 Finds auctions with status "active" and expiry time passed
+- ✅ **With bids:** Changes status to "expired" (pending payment)
+- ❌ **No bids:** Changes status to "failed"
+- 📊 Logs all finalization activity
+
+**Auction Status Values:**
+- `active` - Auction is currently accepting bids
+- `expired` - Auction ended with bids (pending payment processing)
+- `success` - Auction completed successfully with payment
+- `failed` - Auction ended with no bids or payment failed
+
+---
+
 ## 🔒 Authorization Rules
 
 | Endpoint | Authentication | Authorization |
@@ -457,6 +710,9 @@ DELETE /api/products/{id}
 | PUT /api/products/{id} | ✅ Required | **Admin only** |
 | PUT /api/products/{id}/finalize | ✅ Required | **Admin only** |
 | DELETE /api/products/{id} | ✅ Required | **Admin only** |
+| **POST /api/bids** | ✅ Required | **User/Admin (not Guest)** |
+| **GET /api/bids/{auctionId}** | ✅ Required | Any authenticated user |
+| **GET /api/bids** | ✅ Required | Any authenticated user |
 
 ---
 

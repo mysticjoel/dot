@@ -2,7 +2,7 @@
 
 ## 📝 Summary
 
-**Total Endpoints:** 13
+**Total Endpoints:** 16
 **Authentication:** JWT Bearer Token
 **Base URL:** `http://localhost:6000`
 
@@ -25,6 +25,9 @@
 | PUT | `/api/products/{id}` | ✅ | Admin | Update product |
 | PUT | `/api/products/{id}/finalize` | ✅ | Admin | Finalize auction |
 | DELETE | `/api/products/{id}` | ✅ | Admin | Delete product |
+| **POST** | **`/api/bids`** | ✅ | **User** | **Place bid on auction** |
+| **GET** | **`/api/bids/{auctionId}`** | ✅ | **Any** | **Get all bids for auction** |
+| **GET** | **`/api/bids`** | ✅ | **Any** | **Filter bids (query params)** |
 
 ---
 
@@ -57,6 +60,29 @@ curl -X POST http://localhost:6000/api/products \
   }'
 ```
 
+### 4. Place Bid (User)
+```bash
+curl -X POST http://localhost:6000/api/bids \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "auctionId": 1,
+    "amount": 150.00
+  }'
+```
+
+### 5. Get Bids for Auction
+```bash
+curl -X GET http://localhost:6000/api/bids/1 \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+```
+
+### 6. Filter Bids by User
+```bash
+curl -X GET "http://localhost:6000/api/bids?userId=2&minAmount=100" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+```
+
 ---
 
 ## 🔑 Default Credentials
@@ -68,8 +94,9 @@ curl -X POST http://localhost:6000/api/products \
 
 ---
 
-## 📊 Product Filters
+## 📊 Filters
 
+### Product Filters
 Available query parameters for `GET /api/products`:
 - `category` - Filter by category
 - `minPrice` - Minimum price
@@ -83,6 +110,20 @@ Available query parameters for `GET /api/products`:
 GET /api/products?category=Electronics&minPrice=100&maxPrice=1000
 ```
 
+### Bid Filters
+Available query parameters for `GET /api/bids`:
+- `userId` - Filter by bidder user ID
+- `productId` - Filter by product ID
+- `minAmount` - Minimum bid amount
+- `maxAmount` - Maximum bid amount
+- `startDate` - Start date for bid timestamp
+- `endDate` - End date for bid timestamp
+
+**Example:**
+```
+GET /api/bids?userId=2&minAmount=100&maxAmount=500
+```
+
 ---
 
 ## 📤 Excel Upload Format
@@ -94,6 +135,25 @@ GET /api/products?category=Electronics&minPrice=100&maxPrice=1000
 - Description (optional)
 - Category (required)
 - AuctionDuration (required, 2-1440)
+
+---
+
+## ⏱️ Anti-Sniping Feature
+
+**Dynamic Auction Extension:**
+- Bids placed within last **1 minute** extend auction by **+1 minute**
+- Can extend multiple times
+- Configurable in `appsettings.json`
+
+**Auction Status:**
+- `active` - Accepting bids
+- `expired` - Ended with bids (pending payment)
+- `success` - Completed successfully
+- `failed` - Ended with no bids
+
+**Background Service:**
+- Runs every 30 seconds
+- Automatically finalizes expired auctions
 
 ---
 
