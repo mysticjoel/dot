@@ -1,78 +1,458 @@
-﻿using AutoMapper;
+﻿using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
+using OfficeOpenXml;
 using WebApiTemplate.Models;
 using WebApiTemplate.Repository.Database.Entities;
 using WebApiTemplate.Repository.DatabaseOperation.Interface;
+using WebApiTemplate.Service.Helpers;
 using WebApiTemplate.Service.Interface;
 
 namespace WebApiTemplate.Service
 {
     public class ProductService : IProductService
     {
-        private readonly IMapper _mapper;
         private readonly IProductOperation _productOperation;
+        private readonly ILogger<ProductService> _logger;
 
         public ProductService(
-            IMapper mapper,
-            IProductOperation productOperation)
+            IProductOperation productOperation,
+            ILogger<ProductService> logger)
         {
-            _mapper = mapper;
             _productOperation = productOperation;
+            _logger = logger;
         }
 
         ///<inheritdoc/>
-        public List<ProductDto> GetProducts()
+        public async Task<List<ProductListDto>> GetProductsAsync(ProductFilterDto filters)
         {
-            // Hardcoded sample products (placeholder until persistence is wired)
-            var products = new List<Product>
+            var products = await _productOperation.GetProductsWithFiltersAsync(filters);
+
+            return products.Select(p => new ProductListDto
             {
-                new Product { ProductId = 1, Name = "Keyboard", Category = "General", StartingPrice = 20m, AuctionDuration = 60, OwnerId = 1, ExpiryTime = DateTime.UtcNow.AddDays(7) },
-                new Product { ProductId = 2, Name = "Mouse", Category = "General", StartingPrice = 10m, AuctionDuration = 60, OwnerId = 1, ExpiryTime = DateTime.UtcNow.AddDays(6) },
-                new Product { ProductId = 3, Name = "Monitor", Category = "General", StartingPrice = 120m, AuctionDuration = 120, OwnerId = 2, ExpiryTime = DateTime.UtcNow.AddDays(5) },
-                new Product { ProductId = 4, Name = "USB-C Hub", Category = "Accessories", StartingPrice = 30m, AuctionDuration = 90, OwnerId = 2, ExpiryTime = DateTime.UtcNow.AddDays(4) }
+                ProductId = p.ProductId,
+                Name = p.Name,
+                Description = p.Description,
+                Category = p.Category,
+                StartingPrice = p.StartingPrice,
+                AuctionDuration = p.AuctionDuration,
+                OwnerId = p.OwnerId,
+                ExpiryTime = p.ExpiryTime,
+                HighestBidAmount = p.HighestBid?.Amount,
+                TimeRemainingMinutes = AuctionHelpers.CalculateTimeRemainingMinutes(p.ExpiryTime),
+                AuctionStatus = p.Auction?.Status
+            }).ToList();
+        }
+
+        ///<inheritdoc/>
+        public async Task<List<ActiveAuctionDto>> GetActiveAuctionsAsync()
+        {
+            var auctions = await _productOperation.GetActiveAuctionsAsync();
+
+            return auctions.Select(a => new ActiveAuctionDto
+            {
+                ProductId = a.ProductId,
+                Name = a.Product.Name,
+                Description = a.Product.Description,
+                Category = a.Product.Category,
+                StartingPrice = a.Product.StartingPrice,
+                HighestBidAmount = a.HighestBid?.Amount,
+                HighestBidderName = AuctionHelpers.GetUserDisplayName(a.HighestBid?.Bidder),
+                ExpiryTime = a.ExpiryTime,
+                TimeRemainingMinutes = AuctionHelpers.CalculateTimeRemainingMinutes(a.ExpiryTime) ?? 0,
+                AuctionStatus = a.Status
+            }).ToList();
+        }
+
+        ///<inheritdoc/>
+        public async Task<AuctionDetailDto?> GetAuctionDetailAsync(int productId)
+        {
+            var auction = await _productOperation.GetAuctionDetailByIdAsync(productId);
+            if (auction == null)
+            {
+                return null;
+            }
+
+            // Get all bids for this auction
+            var bids = await GetBidsForAuctionAsync(auction.AuctionId);
+
+            return new AuctionDetailDto
+            {
+                ProductId = auction.Product.ProductId,
+                Name = auction.Product.Name,
+                Description = auction.Product.Description,
+                Category = auction.Product.Category,
+                StartingPrice = auction.Product.StartingPrice,
+                AuctionDuration = auction.Product.AuctionDuration,
+                OwnerId = auction.Product.OwnerId,
+                OwnerName = AuctionHelpers.GetUserDisplayName(auction.Product.Owner),
+                ExpiryTime = auction.ExpiryTime,
+                HighestBidAmount = auction.HighestBid?.Amount,
+                TimeRemainingMinutes = AuctionHelpers.CalculateTimeRemainingMinutes(auction.ExpiryTime),
+                AuctionStatus = auction.Status,
+                Bids = bids
+            };
+        }
+
+        ///<inheritdoc/>
+        public async Task<ProductListDto> CreateProductAsync(CreateProductDto dto, int userId)
+        {
+            var expiryTime = AuctionHelpers.CalculateExpiryTime(dto.AuctionDuration);
+
+            // Create product entity
+            var product = new Product
+            {
+                Name = dto.Name,
+                Description = dto.Description,
+                Category = dto.Category,
+                StartingPrice = dto.StartingPrice,
+                AuctionDuration = dto.AuctionDuration,
+                OwnerId = userId,
+                ExpiryTime = expiryTime
             };
 
-            return _mapper.Map<List<ProductDto>>(products);
+            // Save product
+            var createdProduct = await _productOperation.CreateProductAsync(product);
+
+            // Create associated auction
+            var auction = new Auction
+            {
+                ProductId = createdProduct.ProductId,
+                ExpiryTime = expiryTime,
+                Status = "Active",
+                ExtensionCount = 0
+            };
+
+            await _productOperation.UpdateAuctionAsync(auction);
+
+            _logger.LogInformation("Product {ProductId} created with auction by user {UserId}", 
+                createdProduct.ProductId, userId);
+
+            return new ProductListDto
+            {
+                ProductId = createdProduct.ProductId,
+                Name = createdProduct.Name,
+                Description = createdProduct.Description,
+                Category = createdProduct.Category,
+                StartingPrice = createdProduct.StartingPrice,
+                AuctionDuration = createdProduct.AuctionDuration,
+                OwnerId = createdProduct.OwnerId,
+                ExpiryTime = createdProduct.ExpiryTime,
+                HighestBidAmount = null,
+                TimeRemainingMinutes = AuctionHelpers.CalculateTimeRemainingMinutes(expiryTime),
+                AuctionStatus = "Active"
+            };
         }
 
         ///<inheritdoc/>
-        public async Task<ProductDto> AddProduct(ProductDto product)
+        public async Task<ExcelUploadResultDto> UploadProductsFromExcelAsync(IFormFile file, int userId)
         {
+            var result = new ExcelUploadResultDto();
+
+            // Validate file
+            if (file == null || file.Length == 0)
+            {
+                throw new ArgumentException("File is empty or null");
+            }
+
+            if (!file.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("Only .xlsx files are supported");
+            }
+
+            if (file.Length > 10 * 1024 * 1024) // 10MB limit
+            {
+                throw new ArgumentException("File size must not exceed 10MB");
+            }
+
+            // Set EPPlus license context
+            ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+
+            var validProducts = new List<Product>();
+            var now = DateTime.UtcNow;
+
             try
             {
-                // Basic validation aligned to entity requirements
-                if (string.IsNullOrWhiteSpace(product.Name))
-                    throw new ArgumentException("Name is required.", nameof(product.Name));
-                if (string.IsNullOrWhiteSpace(product.Category))
-                    throw new ArgumentException("Category is required.", nameof(product.Category));
-                if (product.StartingPrice <= 0)
-                    throw new ArgumentException("StartingPrice must be > 0.", nameof(product.StartingPrice));
-                if (product.AuctionDuration < 2 || product.AuctionDuration > 24 * 60)
-                    throw new ArgumentException("AuctionDuration must be between 2 minutes and 24 hours.", nameof(product.AuctionDuration));
-
-                // Map DTO to entity
-                Product productToBeAdded = new Product
+                using (var stream = new MemoryStream())
                 {
-                    Name = product.Name,
-                    Description = product.Description,
-                    Category = product.Category,
-                    StartingPrice = product.StartingPrice,
-                    AuctionDuration = product.AuctionDuration,
-                    OwnerId = product.OwnerId,
-                    HighestBidId = product.HighestBidId,
-                    ExpiryTime = product.ExpiryTime
-                };
+                    await file.CopyToAsync(stream);
+                    using (var package = new ExcelPackage(stream))
+                    {
+                        var worksheet = package.Workbook.Worksheets.FirstOrDefault();
+                        if (worksheet == null)
+                        {
+                            throw new ArgumentException("Excel file contains no worksheets");
+                        }
 
-                // Persist using your operation layer once wired
-                // var newProduct = await _productOperation.AddProduct(productToBeAdded);
-                // return _mapper.Map<ProductDto>(newProduct);
+                        // Validate headers
+                        var requiredHeaders = new[] { "ProductId", "Name", "StartingPrice", "Description", "Category", "AuctionDuration" };
+                        var headerRow = worksheet.Cells[1, 1, 1, worksheet.Dimension.Columns];
+                        var headers = new List<string>();
 
-                // For now, return the mapped DTO of the in-memory object
-                return _mapper.Map<ProductDto>(productToBeAdded);
+                        for (int col = 1; col <= worksheet.Dimension.Columns; col++)
+                        {
+                            headers.Add(worksheet.Cells[1, col].Value?.ToString() ?? "");
+                        }
+
+                        var missingHeaders = requiredHeaders.Where(h => !headers.Contains(h, StringComparer.OrdinalIgnoreCase)).ToList();
+                        if (missingHeaders.Any())
+                        {
+                            throw new ArgumentException($"Missing required columns: {string.Join(", ", missingHeaders)}");
+                        }
+
+                        // Get column indices
+                        var nameCol = headers.FindIndex(h => h.Equals("Name", StringComparison.OrdinalIgnoreCase)) + 1;
+                        var descCol = headers.FindIndex(h => h.Equals("Description", StringComparison.OrdinalIgnoreCase)) + 1;
+                        var categoryCol = headers.FindIndex(h => h.Equals("Category", StringComparison.OrdinalIgnoreCase)) + 1;
+                        var priceCol = headers.FindIndex(h => h.Equals("StartingPrice", StringComparison.OrdinalIgnoreCase)) + 1;
+                        var durationCol = headers.FindIndex(h => h.Equals("AuctionDuration", StringComparison.OrdinalIgnoreCase)) + 1;
+
+                        // Process rows
+                        for (int row = 2; row <= worksheet.Dimension.Rows; row++)
+                        {
+                            try
+                            {
+                                var name = worksheet.Cells[row, nameCol].Value?.ToString()?.Trim();
+                                var description = worksheet.Cells[row, descCol].Value?.ToString()?.Trim();
+                                var category = worksheet.Cells[row, categoryCol].Value?.ToString()?.Trim();
+                                var priceStr = worksheet.Cells[row, priceCol].Value?.ToString()?.Trim();
+                                var durationStr = worksheet.Cells[row, durationCol].Value?.ToString()?.Trim();
+
+                                // Validate required fields
+                                if (string.IsNullOrWhiteSpace(name))
+                                {
+                                    result.FailedRows.Add(new FailedRowDto
+                                    {
+                                        RowNumber = row,
+                                        ErrorMessage = "Name is required",
+                                        ProductName = name
+                                    });
+                                    continue;
+                                }
+
+                                if (string.IsNullOrWhiteSpace(category))
+                                {
+                                    result.FailedRows.Add(new FailedRowDto
+                                    {
+                                        RowNumber = row,
+                                        ErrorMessage = "Category is required",
+                                        ProductName = name
+                                    });
+                                    continue;
+                                }
+
+                                if (!decimal.TryParse(priceStr, out var startingPrice) || startingPrice <= 0)
+                                {
+                                    result.FailedRows.Add(new FailedRowDto
+                                    {
+                                        RowNumber = row,
+                                        ErrorMessage = "Invalid starting price (must be > 0)",
+                                        ProductName = name
+                                    });
+                                    continue;
+                                }
+
+                                if (!int.TryParse(durationStr, out var auctionDuration) || auctionDuration < 2 || auctionDuration > 1440)
+                                {
+                                    result.FailedRows.Add(new FailedRowDto
+                                    {
+                                        RowNumber = row,
+                                        ErrorMessage = "Invalid auction duration (must be between 2 and 1440 minutes)",
+                                        ProductName = name
+                                    });
+                                    continue;
+                                }
+
+                                // Create valid product
+                                var expiryTime = AuctionHelpers.CalculateExpiryTime(auctionDuration, now);
+                                var product = new Product
+                                {
+                                    Name = name,
+                                    Description = description,
+                                    Category = category,
+                                    StartingPrice = startingPrice,
+                                    AuctionDuration = auctionDuration,
+                                    OwnerId = userId,
+                                    ExpiryTime = expiryTime
+                                };
+
+                                validProducts.Add(product);
+                            }
+                            catch (Exception ex)
+                            {
+                                result.FailedRows.Add(new FailedRowDto
+                                {
+                                    RowNumber = row,
+                                    ErrorMessage = $"Unexpected error: {ex.Message}",
+                                    ProductName = worksheet.Cells[row, nameCol].Value?.ToString()
+                                });
+                            }
+                        }
+                    }
+                }
+
+                // Bulk insert valid products
+                if (validProducts.Any())
+                {
+                    var createdProducts = await _productOperation.CreateProductsAsync(validProducts);
+
+                    // Create auctions for all products
+                    foreach (var product in createdProducts)
+                    {
+                        var auction = new Auction
+                        {
+                            ProductId = product.ProductId,
+                            ExpiryTime = product.ExpiryTime!.Value,
+                            Status = "Active",
+                            ExtensionCount = 0
+                        };
+                        await _productOperation.UpdateAuctionAsync(auction);
+                    }
+
+                    result.SuccessCount = validProducts.Count;
+                }
+
+                result.FailedCount = result.FailedRows.Count;
+
+                _logger.LogInformation("Excel upload completed: {SuccessCount} succeeded, {FailedCount} failed",
+                    result.SuccessCount, result.FailedCount);
+
+                return result;
             }
             catch (Exception ex)
             {
-                throw new Exception("An error occurred while adding product", ex);
+                _logger.LogError(ex, "Error processing Excel file");
+                throw new Exception($"Error processing Excel file: {ex.Message}", ex);
             }
+        }
+
+        ///<inheritdoc/>
+        public async Task<ProductListDto> UpdateProductAsync(int productId, UpdateProductDto dto)
+        {
+            // Check if product has active bids
+            var hasActiveBids = await _productOperation.HasActiveBidsAsync(productId);
+            if (hasActiveBids)
+            {
+                throw new InvalidOperationException("Cannot update product with active bids");
+            }
+
+            // Get existing product
+            var product = await _productOperation.GetProductByIdAsync(productId);
+            if (product == null)
+            {
+                throw new KeyNotFoundException($"Product with ID {productId} not found");
+            }
+
+            // Update only provided fields
+            if (!string.IsNullOrWhiteSpace(dto.Name))
+            {
+                product.Name = dto.Name;
+            }
+
+            if (dto.Description != null)
+            {
+                product.Description = dto.Description;
+            }
+
+            if (!string.IsNullOrWhiteSpace(dto.Category))
+            {
+                product.Category = dto.Category;
+            }
+
+            if (dto.StartingPrice.HasValue)
+            {
+                product.StartingPrice = dto.StartingPrice.Value;
+            }
+
+            if (dto.AuctionDuration.HasValue)
+            {
+                product.AuctionDuration = dto.AuctionDuration.Value;
+                // Recalculate expiry time
+                product.ExpiryTime = AuctionHelpers.CalculateExpiryTime(dto.AuctionDuration.Value);
+
+                // Update auction expiry time as well
+                var auction = await _productOperation.GetAuctionByProductIdAsync(productId);
+                if (auction != null)
+                {
+                    auction.ExpiryTime = product.ExpiryTime.Value;
+                    await _productOperation.UpdateAuctionAsync(auction);
+                }
+            }
+
+            // Save updates
+            var updatedProduct = await _productOperation.UpdateProductAsync(product);
+
+            _logger.LogInformation("Product {ProductId} updated", productId);
+
+            return new ProductListDto
+            {
+                ProductId = updatedProduct.ProductId,
+                Name = updatedProduct.Name,
+                Description = updatedProduct.Description,
+                Category = updatedProduct.Category,
+                StartingPrice = updatedProduct.StartingPrice,
+                AuctionDuration = updatedProduct.AuctionDuration,
+                OwnerId = updatedProduct.OwnerId,
+                ExpiryTime = updatedProduct.ExpiryTime,
+                HighestBidAmount = updatedProduct.HighestBid?.Amount,
+                TimeRemainingMinutes = AuctionHelpers.CalculateTimeRemainingMinutes(updatedProduct.ExpiryTime),
+                AuctionStatus = updatedProduct.Auction?.Status
+            };
+        }
+
+        ///<inheritdoc/>
+        public async Task DeleteProductAsync(int productId)
+        {
+            // Check if product has active bids
+            var hasActiveBids = await _productOperation.HasActiveBidsAsync(productId);
+            if (hasActiveBids)
+            {
+                throw new InvalidOperationException("Cannot delete product with active bids");
+            }
+
+            // Check if product exists
+            var product = await _productOperation.GetProductByIdAsync(productId);
+            if (product == null)
+            {
+                throw new KeyNotFoundException($"Product with ID {productId} not found");
+            }
+
+            await _productOperation.DeleteProductAsync(productId);
+
+            _logger.LogInformation("Product {ProductId} deleted", productId);
+        }
+
+        ///<inheritdoc/>
+        public async Task FinalizeAuctionAsync(int productId)
+        {
+            var auction = await _productOperation.GetAuctionByProductIdAsync(productId);
+            if (auction == null)
+            {
+                throw new KeyNotFoundException($"Auction for product {productId} not found");
+            }
+
+            auction.Status = "Completed";
+            await _productOperation.UpdateAuctionAsync(auction);
+
+            _logger.LogInformation("Auction for product {ProductId} finalized", productId);
+        }
+
+        /// <summary>
+        /// Helper method to get all bids for an auction
+        /// </summary>
+        private async Task<List<BidDto>> GetBidsForAuctionAsync(int auctionId)
+        {
+            // Query bids directly from database context through the operation layer
+            // Note: This is a temporary solution. Ideally, this should be in a BidOperation/BidRepository
+            var bids = await _productOperation.GetBidsForAuctionAsync(auctionId);
+            
+            return bids.Select(b => new BidDto
+            {
+                BidId = b.BidId,
+                BidderId = b.BidderId,
+                BidderName = AuctionHelpers.GetUserDisplayName(b.Bidder),
+                Amount = b.Amount,
+                Timestamp = b.Timestamp
+            }).ToList();
         }
     }
 }
