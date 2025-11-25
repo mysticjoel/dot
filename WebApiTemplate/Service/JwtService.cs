@@ -10,8 +10,10 @@ namespace WebApiTemplate.Service
 {
     /// <summary>
     /// Service for JWT token generation and management
-    /// Local: Uses Jwt:SecretKey from appsettings.Development.json
-    /// Cloud: Uses AWS_SECRET_KEY (sanitized) as JWT secret
+    /// Priority order:
+    /// 1. Jwt:SecretKeyBase64 (Base64 encoded - RECOMMENDED for cloud)
+    /// 2. Jwt:SecretKey (plain text - local development only)
+    /// 3. USER_PASS environment variable (fallback, sanitized)
     /// </summary>
     public class JwtService : IJwtService
     {
@@ -22,27 +24,46 @@ namespace WebApiTemplate.Service
         {
             _configuration = configuration;
             
-            // Cloud: Check if AWS_SECRET_KEY exists (indicates cloud deployment)
-            var awsSecretKey = Environment.GetEnvironmentVariable("AWS_SECRET_KEY");
+            // Priority 1: Base64 encoded key from appsettings (RECOMMENDED)
+            var configuredKeyBase64 = configuration["Jwt:SecretKeyBase64"];
             
-            if (!string.IsNullOrWhiteSpace(awsSecretKey))
+            // Priority 2: Plain text key from appsettings (local dev)
+            var configuredKey = configuration["Jwt:SecretKey"];
+            
+            // Priority 3: Environment variable USER_PASS (optional fallback)
+            var userPassEnv = Environment.GetEnvironmentVariable("USER_PASS");
+            
+            if (!string.IsNullOrWhiteSpace(configuredKeyBase64))
             {
-                // Cloud deployment: Use AWS_SECRET_KEY as JWT secret (sanitized)
-                // Remove special characters: _ @ - #
-                _secretKey = SanitizePassword(awsSecretKey);
+                // Decode Base64 encoded secret key
+                try
+                {
+                    var keyBytes = Convert.FromBase64String(configuredKeyBase64);
+                    _secretKey = Encoding.UTF8.GetString(keyBytes);
+                }
+                catch (FormatException)
+                {
+                    throw new InvalidOperationException(
+                        "Jwt:SecretKeyBase64 is not a valid Base64 string. " +
+                        "Generate with PowerShell: [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('YourSecretKey'))");
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(configuredKey))
+            {
+                // Use plain text key from configuration
+                _secretKey = configuredKey;
+            }
+            else if (!string.IsNullOrWhiteSpace(userPassEnv))
+            {
+                // Fallback: Use USER_PASS environment variable (sanitized)
+                _secretKey = SanitizePassword(userPassEnv);
             }
             else
             {
-                // Local development: Use configured JWT secret key
-                var configuredKey = configuration["Jwt:SecretKey"];
-                
-                if (string.IsNullOrWhiteSpace(configuredKey))
-                {
-                    throw new InvalidOperationException(
-                        "JWT SecretKey not configured. Set Jwt:SecretKey in appsettings.Development.json");
-                }
-                
-                _secretKey = configuredKey;
+                throw new InvalidOperationException(
+                    "JWT SecretKey not configured. " +
+                    "Add Jwt:SecretKeyBase64 in appsettings.json (Base64 encoded - recommended) " +
+                    "or Jwt:SecretKey (plain text - local dev only)");
             }
 
             // Validate minimum key length for security (256 bits = 32 characters)
@@ -50,7 +71,7 @@ namespace WebApiTemplate.Service
             {
                 throw new InvalidOperationException(
                     $"JWT SecretKey must be at least 32 characters long. Current length: {_secretKey.Length}. " +
-                    $"Ensure AWS_SECRET_KEY in cloud or Jwt:SecretKey in local is long enough.");
+                    $"Generate a longer key with: [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('Your32PlusCharacterSecretKey'))");
             }
         }
 
