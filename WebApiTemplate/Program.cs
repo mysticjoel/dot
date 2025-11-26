@@ -102,6 +102,9 @@ builder.Services.AddScoped<IPaymentOperation, PaymentOperation>();
 // Email service
 builder.Services.AddScoped<IEmailService, EmailService>();
 
+// Dashboard service
+builder.Services.AddScoped<IDashboardService, DashboardService>();
+
 // Background service for auction monitoring
 builder.Services.AddHostedService<AuctionMonitoringService>();
 
@@ -163,6 +166,20 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddAuthorization();
+
+// -----------------------------
+// CORS Configuration
+// -----------------------------
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAngularApp", policy =>
+    {
+        policy.WithOrigins("http://localhost:4200", "http://localhost:4201") // Angular dev servers
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials();
+    });
+});
 
 // -----------------------------
 // Swagger
@@ -287,6 +304,10 @@ app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
+
+// Enable CORS - must come before Authentication
+app.UseCors("AllowAngularApp");
+
 app.UseAuthentication(); // Must come before UseAuthorization
 app.UseAuthorization();
 app.MapControllers();
