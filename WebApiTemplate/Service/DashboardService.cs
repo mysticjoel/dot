@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using WebApiTemplate.Constants;
+using WebApiTemplate.Extensions;
 using WebApiTemplate.Models;
 using WebApiTemplate.Repository.Database;
 
@@ -50,25 +51,29 @@ namespace WebApiTemplate.Service
                 auctionsQuery = auctionsQuery.Where(a => a.ExpiryTime <= toDate.Value);
             }
 
-            // Get auction counts
+            // Get auction counts using extension methods
             var activeCount = await auctionsQuery
-                .CountAsync(a => a.Status == AuctionStatus.Active);
+                .WhereStatus(AuctionStatus.Active)
+                .CountAsync();
 
             var pendingPaymentCount = await auctionsQuery
-                .CountAsync(a => a.Status == AuctionStatus.PendingPayment);
+                .WhereStatus(AuctionStatus.PendingPayment)
+                .CountAsync();
 
             var completedCount = await auctionsQuery
-                .CountAsync(a => a.Status == AuctionStatus.Completed);
+                .WhereStatus(AuctionStatus.Completed)
+                .CountAsync();
 
             // Failed count: explicitly failed OR pending payment with expired window
-            var now = DateTime.UtcNow;
             var failedCount = await auctionsQuery
-                .CountAsync(a => a.Status == AuctionStatus.Failed);
+                .WhereStatus(AuctionStatus.Failed)
+                .CountAsync();
 
-            // Also count pending payments with expired payment windows
+            // Also count pending payments with expired payment windows using extensions
             var expiredPendingPayments = await _context.PaymentAttempts
                 .AsNoTracking()
-                .Where(pa => pa.Status == PaymentStatus.Pending && pa.ExpiryTime < now)
+                .WherePending()
+                .WhereExpired()
                 .Select(pa => pa.AuctionId)
                 .Distinct()
                 .CountAsync();

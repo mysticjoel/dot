@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using WebApiTemplate.Constants;
+using WebApiTemplate.Extensions;
 using WebApiTemplate.Models;
 using WebApiTemplate.Service.Interface;
 
@@ -57,20 +58,20 @@ namespace WebApiTemplate.Controllers
         }
 
         /// <summary>
-        /// Extracts user ID from JWT claims
+        /// Extracts user ID from JWT claims using extension method
         /// </summary>
         private IActionResult? TryGetUserIdFromToken(out int userId)
         {
-            userId = 0;
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                ?? User.FindFirst("sub")?.Value;
-
-            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out userId))
+            var userIdNullable = User.GetUserId();
+            
+            if (!userIdNullable.HasValue)
             {
+                userId = 0;
                 _logger.LogWarning("Unable to extract user ID from token claims");
                 return Unauthorized(new { message = "Invalid token" });
             }
 
+            userId = userIdNullable.Value;
             return null;
         }
 

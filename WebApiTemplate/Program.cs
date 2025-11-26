@@ -13,6 +13,7 @@ using System.Text;
 using WebApiTemplate.BackgroundServices;
 using WebApiTemplate.Configuration;
 using WebApiTemplate.Data;
+using WebApiTemplate.Filters;
 using WebApiTemplate.Repository.Database;
 using WebApiTemplate.Repository.DatabaseOperation.Implementation;
 using WebApiTemplate.Repository.DatabaseOperation.Interface;
@@ -50,29 +51,39 @@ builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
 // FluentValidation setup (core library only)
 builder.Services.AddValidatorsFromAssemblyContaining<RegisterDtoValidator>();
 
-// Controllers with improved validation behavior
-builder.Services.AddControllers()
-    .ConfigureApiBehaviorOptions(options =>
+// Controllers with improved validation behavior and global filters
+builder.Services.AddControllers(options =>
+{
+    // Add global filters for all controllers
+    options.Filters.Add<ActivityLoggingFilter>();
+    options.Filters.Add<CacheControlFilter>(); // No caching by default for auction data
+})
+.ConfigureApiBehaviorOptions(options =>
+{
+    // Customize validation error response
+    options.InvalidModelStateResponseFactory = context =>
     {
-        // Customize validation error response
-        options.InvalidModelStateResponseFactory = context =>
+        var errors = context.ModelState
+            .Where(e => e.Value?.Errors.Count > 0)
+            .ToDictionary(
+                kvp => kvp.Key,
+                kvp => kvp.Value?.Errors.Select(e => e.ErrorMessage).ToArray() ?? Array.Empty<string>()
+            );
+
+        var result = new
         {
-            var errors = context.ModelState
-                .Where(e => e.Value?.Errors.Count > 0)
-                .ToDictionary(
-                    kvp => kvp.Key,
-                    kvp => kvp.Value?.Errors.Select(e => e.ErrorMessage).ToArray() ?? Array.Empty<string>()
-                );
-
-            var result = new
-            {
-                message = "Validation failed",
-                errors = errors
-            };
-
-            return new Microsoft.AspNetCore.Mvc.BadRequestObjectResult(result);
+            message = "Validation failed",
+            errors = errors
         };
-    });
+
+        return new Microsoft.AspNetCore.Mvc.BadRequestObjectResult(result);
+    };
+});
+
+// Register filters for dependency injection
+builder.Services.AddScoped<ActivityLoggingFilter>();
+builder.Services.AddScoped<ValidateModelStateFilter>();
+builder.Services.AddScoped<CacheControlFilter>();
 
 builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<IProductOperation, ProductOperation>();
