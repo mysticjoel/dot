@@ -5,34 +5,24 @@ namespace WebApiTemplate.Constants
     /// </summary>
     public static class AuctionStatus
     {
-        /// <summary>
-        /// Auction is currently active and accepting bids
-        /// </summary>
-        public const string Active = "Active";
+    /// <summary>
+    /// Auction is currently active and accepting bids
+    /// </summary>
+    public const string Active = "Active";
 
-        /// <summary>
-        /// Auction has expired but not yet finalized
-        /// </summary>
-        public const string Expired = "expired";
+    /// <summary>
+    /// Auction is pending payment confirmation
+    /// </summary>
+    public const string PendingPayment = "pendingpayment";
 
-        /// <summary>
-        /// Auction completed successfully with payment
-        /// </summary>
-        public const string Success = "success";
+    /// <summary>
+    /// Auction completed successfully with confirmed payment
+    /// </summary>
+    public const string Completed = "completed";
 
-        /// <summary>
-        /// Auction failed (e.g., payment failed, no bids)
-        /// </summary>
-        public const string Failed = "failed";
-
-        /// <summary>
-        /// Auction is pending payment confirmation
-        /// </summary>
-        public const string PendingPayment = "pendingpayment";
-
-        /// <summary>
-        /// Auction completed successfully with confirmed payment
-        /// </summary>
-        public const string Completed = "completed";
+    /// <summary>
+    /// Auction failed (e.g., payment failed, no bids)
+    /// </summary>
+    public const string Failed = "failed";
     }
 }
