@@ -19,6 +19,7 @@ Authorization: Bearer YOUR_JWT_TOKEN_HERE
 ### 1️⃣ Authentication Endpoints
 - `POST /api/Auth/register` - Register new user
 - `POST /api/Auth/login` - Login and get JWT token
+- `POST /api/Auth/create-admin` - Create admin user (Admin only)
 
 ### 2️⃣ User Endpoints
 - `GET /api/Users/profile` - Get current user profile
@@ -102,6 +103,58 @@ POST /api/Auth/login
 **Default Admin:**
 - Email: `admin@bidsphere.com`
 - Password: `Admin@123456`
+
+---
+
+#### 🔐 **Create Admin User (Admin Only)**
+```http
+POST /api/Auth/create-admin
+```
+**Auth Required:** ✅ Yes (Admin role only)
+
+**Request Body:**
+```json
+{
+  "email": "newadmin@bidsphere.com",
+  "password": "Admin@NewPassword123",
+  "name": "New Admin User"
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "userId": 5,
+  "email": "newadmin@bidsphere.com",
+  "role": "Admin",
+  "expiresAt": "2024-01-15T11:30:00Z"
+}
+```
+
+**Error Responses:**
+
+**409 Conflict (Email exists):**
+```json
+{
+  "message": "A user with this email already exists."
+}
+```
+
+**403 Forbidden (Not admin):**
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc7231#section-6.5.3",
+  "title": "Forbidden",
+  "status": 403
+}
+```
+
+**Notes:**
+- Only existing admin users can create new admins
+- Password must meet complexity requirements (8+ chars, uppercase, lowercase, digit, special char)
+- The newly created admin can immediately login and perform admin operations
+- Use this endpoint to add additional administrators to the system
 
 ---
 

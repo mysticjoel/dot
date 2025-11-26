@@ -222,6 +222,57 @@ namespace WebApiTemplate.Service
         }
 
         /// <summary>
+        /// Creates a new admin user (admin-only operation)
+        /// </summary>
+        /// <param name="dto">Admin creation details</param>
+        /// <returns>Login response with JWT token for the new admin</returns>
+        /// <exception cref="InvalidOperationException">Thrown when email already exists</exception>
+        public async Task<LoginResponseDto> CreateAdminAsync(CreateAdminDto dto)
+        {
+            _logger.LogInformation("Admin creation initiated for email: {Email}", dto.Email);
+
+            // Check email uniqueness
+            var emailExists = await _dbContext.Users.AnyAsync(u => u.Email == dto.Email);
+            if (emailExists)
+            {
+                _logger.LogWarning("Admin creation attempted with existing email: {Email}", dto.Email);
+                throw new InvalidOperationException("A user with this email already exists.");
+            }
+
+            // Hash password using PBKDF2
+            var passwordHash = HashPassword(dto.Password);
+
+            // Create new admin user
+            var admin = new User
+            {
+                Email = dto.Email,
+                PasswordHash = passwordHash,
+                Role = Roles.Admin,
+                Name = dto.Name,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _dbContext.Users.Add(admin);
+            await _dbContext.SaveChangesAsync();
+
+            _logger.LogInformation("Admin user created successfully: UserId={UserId}, Email={Email}, Name={Name}", 
+                admin.UserId, admin.Email, admin.Name ?? "Not provided");
+
+            // Generate JWT token for the new admin
+            var token = _jwtService.GenerateToken(admin);
+            var expirationMinutes = _configuration.GetValue<int>("Jwt:ExpirationMinutes", 60);
+
+            return new LoginResponseDto
+            {
+                Token = token,
+                UserId = admin.UserId,
+                Email = admin.Email,
+                Role = admin.Role,
+                ExpiresAt = DateTime.UtcNow.AddMinutes(expirationMinutes)
+            };
+        }
+
+        /// <summary>
         /// Hashes a password using PBKDF2 with SHA256
         /// </summary>
         /// <param name="password">Plain text password</param>

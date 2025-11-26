@@ -2,7 +2,7 @@
 
 ## 📝 Summary
 
-**Total Endpoints:** 24
+**Total Endpoints:** 25
 **Authentication:** JWT Bearer Token
 **Base URL:** `http://localhost:6000`
 
@@ -14,6 +14,7 @@
 |--------|----------|------|------|-------------|
 | POST | `/api/Auth/register` | ❌ | Public | Register new user |
 | POST | `/api/Auth/login` | ❌ | Public | Login and get JWT |
+| POST | `/api/Auth/create-admin` | ✅ | Admin | Create new admin user |
 | GET | `/api/Users/profile` | ✅ | Any | Get my profile |
 | PUT | `/api/Users/profile` | ✅ | Any | Update my profile |
 | GET | `/api/Users` | ✅ | Admin | Get all users |
@@ -100,6 +101,18 @@ curl -X POST http://localhost:6000/api/products/1/confirm-payment \
 ```bash
 curl -X GET "http://localhost:6000/api/transactions?status=Success&pageNumber=1&pageSize=10" \
   -H "Authorization: Bearer YOUR_TOKEN_HERE"
+```
+
+### 9. Create Admin User (Admin Only)
+```bash
+curl -X POST http://localhost:6000/api/Auth/create-admin \
+  -H "Authorization: Bearer ADMIN_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "newadmin@bidsphere.com",
+    "password": "Admin@NewPassword123",
+    "name": "New Admin User"
+  }'
 ```
 
 ---

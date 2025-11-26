@@ -92,6 +92,27 @@
               "path": ["api", "Auth", "register"]
             }
           }
+        },
+        {
+          "name": "Create Admin (Admin Only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"newadmin@bidsphere.com\",\n  \"password\": \"Admin@NewPassword123\",\n  \"name\": \"New Admin User\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/Auth/create-admin",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Auth", "create-admin"]
+            }
+          }
         }
       ]
     },

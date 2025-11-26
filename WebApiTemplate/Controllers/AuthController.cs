@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using WebApiTemplate.Constants;
 using WebApiTemplate.Models;
 using WebApiTemplate.Service.Interface;
 
@@ -19,19 +20,22 @@ namespace WebApiTemplate.Controllers
         private readonly IValidator<RegisterDto> _registerValidator;
         private readonly IValidator<LoginDto> _loginValidator;
         private readonly IValidator<UpdateProfileDto> _updateProfileValidator;
+        private readonly IValidator<CreateAdminDto> _createAdminValidator;
 
         public AuthController(
             IAuthService authService, 
             ILogger<AuthController> logger,
             IValidator<RegisterDto> registerValidator,
             IValidator<LoginDto> loginValidator,
-            IValidator<UpdateProfileDto> updateProfileValidator)
+            IValidator<UpdateProfileDto> updateProfileValidator,
+            IValidator<CreateAdminDto> createAdminValidator)
         {
             _authService = authService;
             _logger = logger;
             _registerValidator = registerValidator;
             _loginValidator = loginValidator;
             _updateProfileValidator = updateProfileValidator;
+            _createAdminValidator = createAdminValidator;
         }
 
         /// <summary>
@@ -228,6 +232,54 @@ namespace WebApiTemplate.Controllers
             {
                 _logger.LogError(ex, "Unexpected error while updating profile");
                 return StatusCode(500, new { message = "An error occurred while updating your profile." });
+            }
+        }
+
+        /// <summary>
+        /// Create a new admin user (Admin only)
+        /// </summary>
+        /// <param name="dto">Admin creation details</param>
+        /// <returns>JWT token and admin user details</returns>
+        /// <response code="201">Admin created successfully</response>
+        /// <response code="400">Validation error</response>
+        /// <response code="401">Unauthorized - not authenticated</response>
+        /// <response code="403">Forbidden - not an admin</response>
+        /// <response code="409">Email already exists</response>
+        [HttpPost("create-admin")]
+        [Authorize(Roles = Roles.Admin)]
+        [ProducesResponseType(typeof(LoginResponseDto), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<IActionResult> CreateAdmin([FromBody] CreateAdminDto dto)
+        {
+            // Validate DTO
+            var validationResult = await _createAdminValidator.ValidateAsync(dto);
+            var validationError = ValidateDto<CreateAdminDto>(validationResult);
+            if (validationError != null)
+                return validationError;
+
+            try
+            {
+                _logger.LogInformation("Admin creation request received for email: {Email}", dto.Email);
+                
+                var response = await _authService.CreateAdminAsync(dto);
+                
+                _logger.LogInformation("Admin created successfully: UserId={UserId}, Email={Email}", 
+                    response.UserId, response.Email);
+                
+                return CreatedAtAction(nameof(GetProfile), null, response);
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Admin creation failed - email conflict");
+                return Conflict(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error during admin creation");
+                return StatusCode(500, new { message = "An error occurred while creating the admin user." });
             }
         }
     }

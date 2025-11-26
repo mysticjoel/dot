@@ -35,6 +35,13 @@ namespace WebApiTemplate.Service.Interface
         /// <param name="dto">Updated profile details</param>
         /// <returns>Updated user profile</returns>
         Task<UserProfileDto> UpdateUserProfileAsync(int userId, UpdateProfileDto dto);
+
+        /// <summary>
+        /// Creates a new admin user (admin-only operation)
+        /// </summary>
+        /// <param name="dto">Admin creation details</param>
+        /// <returns>Login response with JWT token for the new admin</returns>
+        Task<LoginResponseDto> CreateAdminAsync(CreateAdminDto dto);
     }
 }
 
