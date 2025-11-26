@@ -1,4 +1,4 @@
-using FluentValidation;
+﻿using FluentValidation;
 using WebApiTemplate.Models;
 
 namespace WebApiTemplate.Validators
@@ -56,4 +56,3 @@ namespace WebApiTemplate.Validators
         }
     }
 }
-

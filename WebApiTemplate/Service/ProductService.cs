@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using OfficeOpenXml;
+using System.ComponentModel;
 using WebApiTemplate.Models;
 using WebApiTemplate.Repository.Database;
 using WebApiTemplate.Repository.Database.Entities;
@@ -219,9 +220,6 @@ namespace WebApiTemplate.Service
             {
                 throw new ArgumentException("File size must not exceed 10MB");
             }
-
-            // Set EPPlus license context
-            ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 
             var validProducts = new List<Product>();
             var now = DateTime.UtcNow;
@@ -483,7 +481,7 @@ namespace WebApiTemplate.Service
 
             await _productOperation.DeleteProductAsync(productId);
 
-            _logger.LogInformation("Product deleted successfully: ProductId={ProductId}, Name={Name}", 
+            _logger.LogInformation("Product deleted successfully: ProductId={ProductId}, Name={Name}",
                 productId, product.Name);
         }
 
@@ -515,7 +513,7 @@ namespace WebApiTemplate.Service
             // Query bids directly from database context through the operation layer
             // Note: This is a temporary solution. Ideally, this should be in a BidOperation/BidRepository
             var bids = await _productOperation.GetBidsForAuctionAsync(auctionId);
-            
+
             return bids.Select(b => new BidDto
             {
                 BidId = b.BidId,

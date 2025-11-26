@@ -12,8 +12,8 @@ using WebApiTemplate.Repository.Database;
 namespace WebApiTemplate.Migrations
 {
     [DbContext(typeof(WenApiTemplateDbContext))]
-    [Migration("20251125233731_AddPaymentAttemptExpiryTimeAndConfirmedAmount")]
-    partial class AddPaymentAttemptExpiryTimeAndConfirmedAmount
+    [Migration("20251126152951_InitialCreate")]
+    partial class InitialCreate
     {
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {

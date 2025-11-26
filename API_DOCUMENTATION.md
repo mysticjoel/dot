@@ -1,7 +1,7 @@
 # 📚 BidSphere API Documentation
 
 ## 🌐 Base URL
-- **Local:** `http://localhost:6000` or `https://localhost:6001`
+- **Local:** `http://localhost:5000` or `https://localhost:5001`
 - **Production:** `https://your-cloud-url.com`
 
 ## 🔐 Authentication

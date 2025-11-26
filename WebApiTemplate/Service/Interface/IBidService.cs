@@ -40,4 +40,3 @@ namespace WebApiTemplate.Service.Interface
         Task<PaginatedResultDto<BidDto>> GetFilteredBidsAsync(string? asqlQuery, PaginationDto pagination);
     }
 }
-

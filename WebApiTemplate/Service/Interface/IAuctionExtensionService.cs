@@ -1,4 +1,4 @@
-using WebApiTemplate.Repository.Database.Entities;
+﻿using WebApiTemplate.Repository.Database.Entities;
 
 namespace WebApiTemplate.Service.Interface
 {
@@ -22,4 +22,3 @@ namespace WebApiTemplate.Service.Interface
         Task<int> FinalizeExpiredAuctionsAsync();
     }
 }
-

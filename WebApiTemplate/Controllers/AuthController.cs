@@ -23,7 +23,7 @@ namespace WebApiTemplate.Controllers
         private readonly IValidator<CreateAdminDto> _createAdminValidator;
 
         public AuthController(
-            IAuthService authService, 
+            IAuthService authService,
             ILogger<AuthController> logger,
             IValidator<RegisterDto> registerValidator,
             IValidator<LoginDto> loginValidator,
@@ -263,12 +263,12 @@ namespace WebApiTemplate.Controllers
             try
             {
                 _logger.LogInformation("Admin creation request received for email: {Email}", dto.Email);
-                
+
                 var response = await _authService.CreateAdminAsync(dto);
-                
-                _logger.LogInformation("Admin created successfully: UserId={UserId}, Email={Email}", 
+
+                _logger.LogInformation("Admin created successfully: UserId={UserId}, Email={Email}",
                     response.UserId, response.Email);
-                
+
                 return CreatedAtAction(nameof(GetProfile), null, response);
             }
             catch (InvalidOperationException ex)
@@ -284,4 +284,3 @@ namespace WebApiTemplate.Controllers
         }
     }
 }
-

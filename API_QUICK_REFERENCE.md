@@ -4,7 +4,7 @@
 
 **Total Endpoints:** 25
 **Authentication:** JWT Bearer Token
-**Base URL:** `http://localhost:6000`
+**Base URL:** `http://localhost:5000`
 
 ---
 
@@ -38,20 +38,20 @@
 
 ### 1. Login (Get Token)
 ```bash
-curl -X POST http://localhost:6000/api/Auth/login \
+curl -X POST http://localhost:5000/api/Auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@bidsphere.com","password":"Admin@123456"}'
 ```
 
 ### 2. Get Products (with token)
 ```bash
-curl -X GET http://localhost:6000/api/products \
+curl -X GET http://localhost:5000/api/products \
   -H "Authorization: Bearer YOUR_TOKEN_HERE"
 ```
 
 ### 3. Create Product (Admin)
 ```bash
-curl -X POST http://localhost:6000/api/products \
+curl -X POST http://localhost:5000/api/products \
   -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -H "Content-Type: application/json" \
   -d '{
@@ -65,7 +65,7 @@ curl -X POST http://localhost:6000/api/products \
 
 ### 4. Place Bid (User)
 ```bash
-curl -X POST http://localhost:6000/api/bids \
+curl -X POST http://localhost:5000/api/bids \
   -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -H "Content-Type: application/json" \
   -d '{
@@ -76,19 +76,19 @@ curl -X POST http://localhost:6000/api/bids \
 
 ### 5. Get Bids for Auction
 ```bash
-curl -X GET http://localhost:6000/api/bids/1 \
+curl -X GET http://localhost:5000/api/bids/1 \
   -H "Authorization: Bearer YOUR_TOKEN_HERE"
 ```
 
 ### 6. Filter Bids by User
 ```bash
-curl -X GET "http://localhost:6000/api/bids?userId=2&minAmount=100" \
+curl -X GET "http://localhost:5000/api/bids?userId=2&minAmount=100" \
   -H "Authorization: Bearer YOUR_TOKEN_HERE"
 ```
 
 ### 7. Confirm Payment (Winner)
 ```bash
-curl -X POST http://localhost:6000/api/products/1/confirm-payment \
+curl -X POST http://localhost:5000/api/products/1/confirm-payment \
   -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -H "Content-Type: application/json" \
   -d '{
@@ -99,13 +99,13 @@ curl -X POST http://localhost:6000/api/products/1/confirm-payment \
 
 ### 8. Get Transactions
 ```bash
-curl -X GET "http://localhost:6000/api/transactions?status=Success&pageNumber=1&pageSize=10" \
+curl -X GET "http://localhost:5000/api/transactions?status=Success&pageNumber=1&pageSize=10" \
   -H "Authorization: Bearer YOUR_TOKEN_HERE"
 ```
 
 ### 9. Create Admin User (Admin Only)
 ```bash
-curl -X POST http://localhost:6000/api/Auth/create-admin \
+curl -X POST http://localhost:5000/api/Auth/create-admin \
   -H "Authorization: Bearer ADMIN_TOKEN_HERE" \
   -H "Content-Type: application/json" \
   -d '{
@@ -238,7 +238,7 @@ testInstantFail: true  (optional, for testing)
 ## 🎯 Access Swagger
 
 ```
-http://localhost:6000/swagger
+http://localhost:5000/swagger
 ```
 
 **Steps:**

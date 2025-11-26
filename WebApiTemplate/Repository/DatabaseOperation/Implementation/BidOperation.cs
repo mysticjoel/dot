@@ -144,12 +144,29 @@ namespace WebApiTemplate.Repository.DatabaseOperation.Implementation
         /// <summary>
         /// Updates an existing auction
         /// </summary>
+        /// <summary>
+        /// Updates an existing auction
+        /// </summary>
         public async Task UpdateAuctionAsync(Auction auction)
         {
-            _context.Auctions.Update(auction);
+            // Load fresh from database without navigation properties
+            var existingAuction = await _context.Auctions
+                .FirstOrDefaultAsync(a => a.AuctionId == auction.AuctionId);
+
+            if (existingAuction == null)
+            {
+                throw new InvalidOperationException($"Auction {auction.AuctionId} not found");
+            }
+
+            // Update only scalar properties
+            existingAuction.ProductId = auction.ProductId;
+            existingAuction.ExpiryTime = auction.ExpiryTime;
+            existingAuction.Status = auction.Status;
+            existingAuction.HighestBidId = auction.HighestBidId;
+            existingAuction.ExtensionCount = auction.ExtensionCount;
+
             await _context.SaveChangesAsync();
         }
-
         /// <summary>
         /// Creates an extension history record
         /// </summary>
@@ -166,6 +183,7 @@ namespace WebApiTemplate.Repository.DatabaseOperation.Implementation
         {
             var now = DateTime.UtcNow;
             return await _context.Auctions
+                .AsNoTracking()
                 .Include(a => a.Product)
                 .Include(a => a.HighestBid)
                 .Where(a => a.Status == Constants.AuctionStatus.Active && a.ExpiryTime < now)
@@ -173,4 +191,3 @@ namespace WebApiTemplate.Repository.DatabaseOperation.Implementation
         }
     }
 }
-

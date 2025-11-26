@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace WebApiTemplate.Models
 {
@@ -26,4 +26,3 @@ namespace WebApiTemplate.Models
         public string? Name { get; set; }
     }
 }
-

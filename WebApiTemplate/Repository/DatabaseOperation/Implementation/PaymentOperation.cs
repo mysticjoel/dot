@@ -68,6 +68,13 @@ namespace WebApiTemplate.Repository.DatabaseOperation.Implementation
         /// </summary>
         public async Task UpdatePaymentAttemptAsync(PaymentAttempt attempt)
         {
+            var existingEntry = _context.ChangeTracker.Entries<PaymentAttempt>()
+                .FirstOrDefault(e => e.Entity.PaymentId == attempt.PaymentId);
+
+            if (existingEntry != null)
+            {
+                existingEntry.State = EntityState.Detached;
+            }
             _context.PaymentAttempts.Update(attempt);
             await _context.SaveChangesAsync();
         }
@@ -98,6 +105,7 @@ namespace WebApiTemplate.Repository.DatabaseOperation.Implementation
             var now = DateTime.UtcNow;
 
             return await _context.PaymentAttempts
+                .AsNoTracking()
                 .Include(pa => pa.Auction)
                     .ThenInclude(a => a.Product)
                 .Include(pa => pa.Bidder)

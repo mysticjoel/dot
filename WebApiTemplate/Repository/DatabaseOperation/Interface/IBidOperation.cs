@@ -73,4 +73,3 @@ namespace WebApiTemplate.Repository.DatabaseOperation.Interface
         Task<List<Auction>> GetExpiredAuctionsAsync();
     }
 }
-

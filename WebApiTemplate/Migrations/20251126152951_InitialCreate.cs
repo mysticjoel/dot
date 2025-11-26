@@ -6,95 +6,10 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 namespace WebApiTemplate.Migrations
 {
-    public partial class UpdatedControllers : Migration
+    public partial class InitialCreate : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropPrimaryKey(
-                name: "PK_Products",
-                table: "Products");
-
-            migrationBuilder.DropColumn(
-                name: "CreatedAt",
-                table: "Products");
-
-            migrationBuilder.RenameColumn(
-                name: "Id",
-                table: "Products",
-                newName: "OwnerId");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Name",
-                table: "Products",
-                type: "character varying(200)",
-                maxLength: 200,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "text");
-
-            migrationBuilder.AlterColumn<int>(
-                name: "OwnerId",
-                table: "Products",
-                type: "integer",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "integer")
-                .OldAnnotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn);
-
-            migrationBuilder.AddColumn<int>(
-                name: "ProductId",
-                table: "Products",
-                type: "integer",
-                nullable: false,
-                defaultValue: 0)
-                .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn);
-
-            migrationBuilder.AddColumn<int>(
-                name: "AuctionDuration",
-                table: "Products",
-                type: "integer",
-                nullable: false,
-                defaultValue: 0);
-
-            migrationBuilder.AddColumn<string>(
-                name: "Category",
-                table: "Products",
-                type: "character varying(100)",
-                maxLength: 100,
-                nullable: false,
-                defaultValue: "");
-
-            migrationBuilder.AddColumn<string>(
-                name: "Description",
-                table: "Products",
-                type: "character varying(2000)",
-                maxLength: 2000,
-                nullable: true);
-
-            migrationBuilder.AddColumn<DateTime>(
-                name: "ExpiryTime",
-                table: "Products",
-                type: "timestamp with time zone",
-                nullable: true);
-
-            migrationBuilder.AddColumn<int>(
-                name: "HighestBidId",
-                table: "Products",
-                type: "integer",
-                nullable: true);
-
-            migrationBuilder.AddColumn<decimal>(
-                name: "StartingPrice",
-                table: "Products",
-                type: "numeric(18,2)",
-                nullable: false,
-                defaultValue: 0m);
-
-            migrationBuilder.AddPrimaryKey(
-                name: "PK_Products",
-                table: "Products",
-                column: "ProductId");
-
             migrationBuilder.CreateTable(
                 name: "Users",
                 columns: table => new
@@ -130,12 +45,6 @@ namespace WebApiTemplate.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Auctions", x => x.AuctionId);
-                    table.ForeignKey(
-                        name: "FK_Auctions_Products_ProductId",
-                        column: x => x.ProductId,
-                        principalTable: "Products",
-                        principalColumn: "ProductId",
-                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -199,7 +108,9 @@ namespace WebApiTemplate.Migrations
                     Status = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
                     AttemptNumber = table.Column<int>(type: "integer", nullable: false),
                     AttemptTime = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    Amount = table.Column<decimal>(type: "numeric(18,2)", nullable: true)
+                    ExpiryTime = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    Amount = table.Column<decimal>(type: "numeric(18,2)", nullable: true),
+                    ConfirmedAmount = table.Column<decimal>(type: "numeric(18,2)", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -213,6 +124,38 @@ namespace WebApiTemplate.Migrations
                     table.ForeignKey(
                         name: "FK_PaymentAttempts_Users_BidderId",
                         column: x => x.BidderId,
+                        principalTable: "Users",
+                        principalColumn: "UserId",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Products",
+                columns: table => new
+                {
+                    ProductId = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    Name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    Description = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: true),
+                    Category = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    StartingPrice = table.Column<decimal>(type: "numeric(18,2)", nullable: false),
+                    AuctionDuration = table.Column<int>(type: "integer", nullable: false),
+                    OwnerId = table.Column<int>(type: "integer", nullable: false),
+                    ExpiryTime = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    HighestBidId = table.Column<int>(type: "integer", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Products", x => x.ProductId);
+                    table.ForeignKey(
+                        name: "FK_Products_Bids_HighestBidId",
+                        column: x => x.HighestBidId,
+                        principalTable: "Bids",
+                        principalColumn: "BidId",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Products_Users_OwnerId",
+                        column: x => x.OwnerId,
                         principalTable: "Users",
                         principalColumn: "UserId",
                         onDelete: ReferentialAction.Restrict);
@@ -239,21 +182,6 @@ namespace WebApiTemplate.Migrations
                         principalColumn: "PaymentId",
                         onDelete: ReferentialAction.Cascade);
                 });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Products_Category",
-                table: "Products",
-                column: "Category");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Products_HighestBidId",
-                table: "Products",
-                column: "HighestBidId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Products_OwnerId",
-                table: "Products",
-                column: "OwnerId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Auctions_HighestBidId",
@@ -312,6 +240,21 @@ namespace WebApiTemplate.Migrations
                 column: "Status");
 
             migrationBuilder.CreateIndex(
+                name: "IX_Products_Category",
+                table: "Products",
+                column: "Category");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Products_HighestBidId",
+                table: "Products",
+                column: "HighestBidId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Products_OwnerId",
+                table: "Products",
+                column: "OwnerId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Transactions_PaymentId",
                 table: "Transactions",
                 column: "PaymentId");
@@ -338,43 +281,31 @@ namespace WebApiTemplate.Migrations
                 column: "Role");
 
             migrationBuilder.AddForeignKey(
-                name: "FK_Products_Bids_HighestBidId",
-                table: "Products",
-                column: "HighestBidId",
-                principalTable: "Bids",
-                principalColumn: "BidId",
-                onDelete: ReferentialAction.Restrict);
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_Products_Users_OwnerId",
-                table: "Products",
-                column: "OwnerId",
-                principalTable: "Users",
-                principalColumn: "UserId",
-                onDelete: ReferentialAction.Restrict);
-
-            migrationBuilder.AddForeignKey(
                 name: "FK_Auctions_Bids_HighestBidId",
                 table: "Auctions",
                 column: "HighestBidId",
                 principalTable: "Bids",
                 principalColumn: "BidId",
                 onDelete: ReferentialAction.Restrict);
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_Auctions_Products_ProductId",
+                table: "Auctions",
+                column: "ProductId",
+                principalTable: "Products",
+                principalColumn: "ProductId",
+                onDelete: ReferentialAction.Restrict);
         }
 
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropForeignKey(
-                name: "FK_Products_Bids_HighestBidId",
-                table: "Products");
-
-            migrationBuilder.DropForeignKey(
-                name: "FK_Products_Users_OwnerId",
-                table: "Products");
-
-            migrationBuilder.DropForeignKey(
                 name: "FK_Auctions_Bids_HighestBidId",
                 table: "Auctions");
+
+            migrationBuilder.DropForeignKey(
+                name: "FK_Products_Bids_HighestBidId",
+                table: "Products");
 
             migrationBuilder.DropTable(
                 name: "ExtensionHistories");
@@ -392,86 +323,10 @@ namespace WebApiTemplate.Migrations
                 name: "Auctions");
 
             migrationBuilder.DropTable(
+                name: "Products");
+
+            migrationBuilder.DropTable(
                 name: "Users");
-
-            migrationBuilder.DropPrimaryKey(
-                name: "PK_Products",
-                table: "Products");
-
-            migrationBuilder.DropIndex(
-                name: "IX_Products_Category",
-                table: "Products");
-
-            migrationBuilder.DropIndex(
-                name: "IX_Products_HighestBidId",
-                table: "Products");
-
-            migrationBuilder.DropIndex(
-                name: "IX_Products_OwnerId",
-                table: "Products");
-
-            migrationBuilder.DropColumn(
-                name: "ProductId",
-                table: "Products");
-
-            migrationBuilder.DropColumn(
-                name: "AuctionDuration",
-                table: "Products");
-
-            migrationBuilder.DropColumn(
-                name: "Category",
-                table: "Products");
-
-            migrationBuilder.DropColumn(
-                name: "Description",
-                table: "Products");
-
-            migrationBuilder.DropColumn(
-                name: "ExpiryTime",
-                table: "Products");
-
-            migrationBuilder.DropColumn(
-                name: "HighestBidId",
-                table: "Products");
-
-            migrationBuilder.DropColumn(
-                name: "StartingPrice",
-                table: "Products");
-
-            migrationBuilder.RenameColumn(
-                name: "OwnerId",
-                table: "Products",
-                newName: "Id");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Name",
-                table: "Products",
-                type: "text",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "character varying(200)",
-                oldMaxLength: 200);
-
-            migrationBuilder.AlterColumn<int>(
-                name: "Id",
-                table: "Products",
-                type: "integer",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "integer")
-                .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn);
-
-            migrationBuilder.AddColumn<DateTime>(
-                name: "CreatedAt",
-                table: "Products",
-                type: "timestamp with time zone",
-                nullable: false,
-                defaultValue: new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified));
-
-            migrationBuilder.AddPrimaryKey(
-                name: "PK_Products",
-                table: "Products",
-                column: "Id");
         }
     }
 }

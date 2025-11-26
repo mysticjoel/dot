@@ -44,4 +44,3 @@ namespace WebApiTemplate.Service.Interface
         Task<LoginResponseDto> CreateAdminAsync(CreateAdminDto dto);
     }
 }
-

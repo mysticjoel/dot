@@ -70,7 +70,7 @@ namespace WebApiTemplate.Service
             _dbContext.Users.Add(user);
             await _dbContext.SaveChangesAsync();
 
-            _logger.LogInformation("User registered successfully: UserId={UserId}, Email={Email}, Role={Role}", 
+            _logger.LogInformation("User registered successfully: UserId={UserId}, Email={Email}, Role={Role}",
                 user.UserId, user.Email, user.Role);
 
             // Generate JWT token
@@ -113,7 +113,7 @@ namespace WebApiTemplate.Service
                 throw new UnauthorizedAccessException("Invalid email or password.");
             }
 
-            _logger.LogInformation("User logged in successfully: UserId={UserId}, Email={Email}", 
+            _logger.LogInformation("User logged in successfully: UserId={UserId}, Email={Email}",
                 user.UserId, user.Email);
 
             // Generate JWT token
@@ -149,7 +149,7 @@ namespace WebApiTemplate.Service
                 return null;
             }
 
-            _logger.LogInformation("User profile retrieved successfully: UserId={UserId}, Email={Email}", 
+            _logger.LogInformation("User profile retrieved successfully: UserId={UserId}, Email={Email}",
                 user.UserId, user.Email);
 
             return new UserProfileDto
@@ -255,7 +255,7 @@ namespace WebApiTemplate.Service
             _dbContext.Users.Add(admin);
             await _dbContext.SaveChangesAsync();
 
-            _logger.LogInformation("Admin user created successfully: UserId={UserId}, Email={Email}, Name={Name}", 
+            _logger.LogInformation("Admin user created successfully: UserId={UserId}, Email={Email}, Name={Name}",
                 admin.UserId, admin.Email, admin.Name ?? "Not provided");
 
             // Generate JWT token for the new admin
@@ -327,4 +327,3 @@ namespace WebApiTemplate.Service
         }
     }
 }
-

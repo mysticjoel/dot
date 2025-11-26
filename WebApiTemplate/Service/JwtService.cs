@@ -1,4 +1,7 @@
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using System;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -9,37 +12,34 @@ using WebApiTemplate.Service.Interface;
 namespace WebApiTemplate.Service
 {
     /// <summary>
-    /// Service for JWT token generation and management
-    /// Priority order:
-    /// 1. Jwt:SecretKeyBase64 (Base64 encoded - RECOMMENDED for cloud)
-    /// 2. Jwt:SecretKey (plain text - local development only)
-    /// 3. USER_PASS environment variable (fallback, sanitized)
+    /// Service for JWT token generation and management.
     /// </summary>
     public class JwtService : IJwtService
     {
         private readonly IConfiguration _configuration;
-        private readonly string _secretKey;
+        private readonly ILogger<JwtService> _logger;
 
-        public JwtService(IConfiguration configuration)
+        // Raw key bytes used for HMAC signing
+        private readonly byte[] _keyBytes;
+
+        /// <summary>
+        /// Initializes a new instance of <see cref="JwtService"/> and selects the signing key.
+        /// </summary>
+        public JwtService(IConfiguration configuration, ILogger<JwtService> logger)
         {
-            _configuration = configuration;
-            
-            // Priority 1: Base64 encoded key from appsettings (RECOMMENDED)
+            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
             var configuredKeyBase64 = configuration["Jwt:SecretKeyBase64"];
-            
-            // Priority 2: Plain text key from appsettings (local dev)
             var configuredKey = configuration["Jwt:SecretKey"];
-            
-            // Priority 3: Environment variable USER_PASS (optional fallback)
-            var userPassEnv = Environment.GetEnvironmentVariable("USER_PASS") + "ofjoie123";
-            
+            var userPassEnv = Environment.GetEnvironmentVariable("DB_PASSWORD");
+
             if (!string.IsNullOrWhiteSpace(configuredKeyBase64))
             {
-                // Decode Base64 encoded secret key
                 try
                 {
-                    var keyBytes = Convert.FromBase64String(configuredKeyBase64);
-                    _secretKey = Encoding.UTF8.GetString(keyBytes);
+                    _keyBytes = Convert.FromBase64String(configuredKeyBase64);
+                    _logger.LogInformation("JWT key source selected: Jwt:SecretKeyBase64 (Base64).");
                 }
                 catch (FormatException)
                 {
@@ -50,62 +50,44 @@ namespace WebApiTemplate.Service
             }
             else if (!string.IsNullOrWhiteSpace(configuredKey))
             {
-                // Use plain text key from configuration
-                _secretKey = configuredKey;
+                _keyBytes = Encoding.UTF8.GetBytes(configuredKey);
+                _logger.LogInformation("JWT key source selected: Jwt:SecretKey (plain text).");
             }
             else if (!string.IsNullOrWhiteSpace(userPassEnv))
             {
-                // Fallback: Use USER_PASS environment variable (sanitized)
-                _secretKey = SanitizePassword(userPassEnv);
+                var fixedSalt = DeriveFixedSalt("WebApiTemplate:JwtService:DerivationSalt:v1");
+                using var pbkdf2 = new Rfc2898DeriveBytes(userPassEnv, fixedSalt, 200_000, HashAlgorithmName.SHA256);
+                _keyBytes = pbkdf2.GetBytes(32); // 256-bit
+                _logger.LogInformation("JWT key source selected: DB_PASSWORD (PBKDF2-derived). Key length: {Len} bytes.", _keyBytes.Length);
             }
             else
             {
                 throw new InvalidOperationException(
                     "JWT SecretKey not configured. " +
                     "Add Jwt:SecretKeyBase64 in appsettings.json (Base64 encoded - recommended) " +
-                    "or Jwt:SecretKey (plain text - local dev only)");
+                    "or Jwt:SecretKey (plain text - local dev only).");
             }
 
-            // Validate minimum key length for security (256 bits = 32 characters)
-            if (_secretKey.Length < 32)
+            if (_keyBytes.Length < 32)
             {
                 throw new InvalidOperationException(
-                    $"JWT SecretKey must be at least 32 characters long. Current length: {_secretKey.Length}. " +
-                    $"Generate a longer key with: [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('Your32PlusCharacterSecretKey'))");
+                    $"JWT key must be at least 32 bytes. Current: {_keyBytes.Length} bytes. " +
+                    $"Provide Jwt:SecretKeyBase64 (32+ bytes when decoded) or a longer Jwt:SecretKey.");
             }
         }
 
         /// <summary>
-        /// Gets the JWT secret key used for token signing
+        /// Generates a JWT token for the specified user using HMAC-SHA256 signing.
         /// </summary>
-        public string SecretKey => _secretKey;
-
-        /// <summary>
-        /// Sanitizes password by removing special characters: _ @ - #
-        /// </summary>
-        /// <param name="password">Password to sanitize</param>
-        /// <returns>Sanitized password without _ @ - #</returns>
-        private static string SanitizePassword(string password)
-        {
-            return password
-                .Replace("_", "")
-                .Replace("@", "")
-                .Replace("-", "")
-                .Replace("#", "");
-        }
-
-        /// <summary>
-        /// Generates a JWT token for the specified user
-        /// </summary>
-        /// <param name="user">User to generate token for</param>
-        /// <returns>JWT token string</returns>
         public string GenerateToken(User user)
         {
+            if (user == null) throw new ArgumentNullException(nameof(user));
+
             var issuer = _configuration["Jwt:Issuer"] ?? "BidSphere";
             var audience = _configuration["Jwt:Audience"] ?? "BidSphere";
             var expirationMinutes = _configuration.GetValue<int>("Jwt:ExpirationMinutes", 60);
 
-            var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_secretKey));
+            var securityKey = new SymmetricSecurityKey(_keyBytes);
             var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
 
             var claims = new[]
@@ -113,8 +95,8 @@ namespace WebApiTemplate.Service
                 new Claim(JwtRegisteredClaimNames.Sub, user.UserId.ToString()),
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
                 new Claim(ClaimTypes.Role, user.Role),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-                new Claim(JwtRegisteredClaimNames.Iat, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64)
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid(). ToString()),
+                new Claim(JwtRegisteredClaimNames.Iat, DateTimeOffset.UtcNow.ToUnixTimeSeconds(). ToString(), ClaimValueTypes.Integer64)
             };
 
             var token = new JwtSecurityToken(
@@ -128,6 +110,20 @@ namespace WebApiTemplate.Service
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
+        /// <summary>
+        /// Gets the JWT secret key used for token signing, represented as Base64 of the raw key bytes.
+        /// Note: Do not log or expose this in public endpoints.
+        /// </summary>
+        public string SecretKey => Convert.ToBase64String(_keyBytes);
+
+        /// <summary>
+        /// Derives a fixed 32-byte salt from a tag using SHA-256 hashing.
+        /// Ensures deterministic PBKDF2 output across restarts for the same tag.
+        /// </summary>
+        private static byte[] DeriveFixedSalt(string tag)
+        {
+            var tagBytes = Encoding.UTF8.GetBytes(tag ?? "WebApiTemplate:JwtService:DefaultSaltTag");
+            return SHA256.HashData(tagBytes); // 32 bytes
+        }
     }
 }
-

@@ -1,11 +1,14 @@
 #region References
+
 using AutoMapper;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using Microsoft.Extensions.Logging;
+using Npgsql;
+using System.Security.Cryptography;
 using System.Text;
 using WebApiTemplate.BackgroundServices;
 using WebApiTemplate.Configuration;
@@ -16,22 +19,11 @@ using WebApiTemplate.Repository.DatabaseOperation.Interface;
 using WebApiTemplate.Service;
 using WebApiTemplate.Service.Interface;
 using WebApiTemplate.Validators;
-using WebApiTemplate.Middleware;
+
 #endregion
 
-var builder = WebApplication.CreateBuilder(args);
 
-// -----------------------------
-// Explicit Kestrel configuration
-// -----------------------------
-builder.WebHost.ConfigureKestrel(options =>
-{
-    options.ListenLocalhost(6000); // HTTP
-    options.ListenLocalhost(6001, listenOptions =>
-    {
-        listenOptions.UseHttps(); // HTTPS
-    });
-});
+var builder = WebApplication.CreateBuilder(args);
 
 // -----------------------------
 // Database connection
@@ -85,7 +77,6 @@ builder.Services.AddControllers()
 builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<IProductOperation, ProductOperation>();
 
-// Bid services
 builder.Services.AddScoped<IBidService, BidService>();
 builder.Services.AddScoped<IBidOperation, BidOperation>();
 
@@ -117,18 +108,39 @@ builder.Services.AddHostedService<AuctionMonitoringService>();
 // Background service for payment retry queue
 builder.Services.AddHostedService<RetryQueueService>();
 
-// Authentication services
-builder.Services.AddSingleton<IJwtService, JwtService>();
+
+builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 
-// Query parser service
 builder.Services.AddScoped<WebApiTemplate.Service.QueryParser.IAsqlParser, WebApiTemplate.Service.QueryParser.AsqlParser>();
 
+
 // -----------------------------
-// JWT Authentication Configuration
+// JWT Key Configuration
 // -----------------------------
-var jwtService = new JwtService(builder.Configuration);
-var secretKey = jwtService.SecretKey;
+byte[] jwtKeyBytes;
+var configuredKeyBase64 = builder.Configuration["Jwt:SecretKeyBase64"];
+var configuredKey = builder.Configuration["Jwt:SecretKey"];
+var dbPassword = Environment.GetEnvironmentVariable("DB_PASSWORD");
+
+if (!string.IsNullOrWhiteSpace(configuredKeyBase64))
+{
+    jwtKeyBytes = Convert.FromBase64String(configuredKeyBase64);
+}
+else if (!string.IsNullOrWhiteSpace(configuredKey))
+{
+    jwtKeyBytes = Encoding.UTF8.GetBytes(configuredKey);
+}
+else if (!string.IsNullOrWhiteSpace(dbPassword))
+{
+    var fixedSalt = SHA256.HashData(Encoding.UTF8.GetBytes("WebApiTemplate:JwtService:DerivationSalt:v1"));
+    using var pbkdf2 = new Rfc2898DeriveBytes(dbPassword, fixedSalt, 200_000, HashAlgorithmName.SHA256);
+    jwtKeyBytes = pbkdf2.GetBytes(32);
+}
+else
+{
+    throw new InvalidOperationException("JWT SecretKey not configured. Add Jwt:SecretKeyBase64, Jwt:SecretKey, or set DB_PASSWORD environment variable.");
+}
 
 builder.Services.AddAuthentication(options =>
 {
@@ -145,7 +157,7 @@ builder.Services.AddAuthentication(options =>
         ValidateIssuerSigningKey = true,
         ValidIssuer = builder.Configuration["Jwt:Issuer"],
         ValidAudience = builder.Configuration["Jwt:Audience"],
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey)),
+        IssuerSigningKey = new SymmetricSecurityKey(jwtKeyBytes),
         ClockSkew = TimeSpan.Zero // Remove default 5 minute clock skew
     };
 });
@@ -158,9 +170,9 @@ builder.Services.AddAuthorization();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo 
-    { 
-        Title = "BidSphere API", 
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "BidSphere API",
         Version = "v1",
         Description = "API for BidSphere auction management system"
     });
@@ -186,7 +198,7 @@ builder.Services.AddSwaggerGen(c =>
                     Id = "Bearer"
                 }
             },
-            Array.Empty<string>()
+            Array. Empty<string>()
         }
     });
 });
@@ -196,22 +208,48 @@ var app = builder.Build();
 // -----------------------------
 // Auto Apply Migrations
 // -----------------------------
+// Auto Apply Migrations with try-catch
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
+    var logger = services.GetRequiredService<ILogger<Program>>();
     var context = services.GetRequiredService<WenApiTemplateDbContext>();
 
-    context.Database.ExecuteSqlRaw(@"
-        CREATE TABLE IF NOT EXISTS ""__EFMigrationsHistory"" (
-            ""MigrationId"" varchar(150) PRIMARY KEY,
-            ""ProductVersion"" varchar(32) NOT NULL
-        )
-    ");
+    try
+    {
+        // Ensure migrations history table exists (idempotent)
+        context.Database.ExecuteSqlRaw(@"
+            CREATE TABLE IF NOT EXISTS ""__EFMigrationsHistory"" (
+                ""MigrationId"" varchar(150) PRIMARY KEY,
+                ""ProductVersion"" varchar(32) NOT NULL
+            );
+        ");
 
-    context.Database.Migrate();
+        // Apply pending migrations
+        context.Database.Migrate();
+
+        logger.LogInformation("Database initialization completed: '__EFMigrationsHistory' ensured and migrations applied.");
+    }
+    catch (PostgresException pgEx)
+    {
+        // Handles cases like relation already exists, role/user exists, etc.
+        logger.LogWarning(pgEx, "Postgres exception during database initialization. Continuing startup. SqlState={SqlState}", pgEx.SqlState);
+    }
+    catch (DbUpdateException dbEx)
+    {
+        logger.LogError(dbEx, "EF Core DbUpdateException during database initialization.");
+        // Optionally rethrow if you want startup to fail:
+        // throw;
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Unexpected error during database initialization.");
+        // Decide whether to continue or fail fast
+        // throw;
+    }
 }
 
-// Development-only automatic migrations
+// Development-only automatic migrations (optional; guard to avoid double-run)
 if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();
@@ -220,12 +258,13 @@ if (app.Environment.IsDevelopment())
 
     try
     {
-        db.Database.Migrate();
-        logger.LogInformation("Database migrations applied (Development).");
+        // If you already migrated above, consider skipping to avoid duplicate work
+        // db. Database.Migrate();
+        logger.LogInformation("Development environment detected. Database already initialized at startup.");
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Failed to apply migrations in Development.");
+        logger.LogWarning(ex, "Development migration step encountered an issue, but continuing.");
     }
 }
 
@@ -237,7 +276,7 @@ using (var scope = app.Services.CreateScope())
     var context = scope.ServiceProvider.GetRequiredService<WenApiTemplateDbContext>();
     var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    
+
     await AdminSeeder.SeedAdminAsync(context, configuration, logger);
 }
 
@@ -248,13 +287,6 @@ app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
-
-// Global exception handler middleware
-app.UseGlobalExceptionHandler();
-
-// Request logging middleware with correlation IDs
-app.UseRequestLogging();
-
 app.UseAuthentication(); // Must come before UseAuthorization
 app.UseAuthorization();
 app.MapControllers();

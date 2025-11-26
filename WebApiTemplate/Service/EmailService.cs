@@ -57,8 +57,8 @@ namespace WebApiTemplate.Service
             // Priority 2: Plain text password (local development only)
             if (!string.IsNullOrWhiteSpace(_smtpSettings.Password))
             {
-                _logger.LogWarning("Using plain text SMTP password from SmtpSettings:Password. " +
-                    "For production, use SmtpSettings:PasswordBase64 instead.");
+                //_logger.LogWarning("Using plain text SMTP password from SmtpSettings:Password. " +
+                //    "For production, use SmtpSettings:PasswordBase64 instead.");
                 return _smtpSettings.Password;
             }
 

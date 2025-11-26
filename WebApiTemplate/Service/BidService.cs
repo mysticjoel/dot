@@ -39,7 +39,7 @@ namespace WebApiTemplate.Service
         /// </summary>
         public async Task<BidDto> PlaceBidAsync(PlaceBidDto dto, int userId)
         {
-            _logger.LogInformation("User {UserId} attempting to place bid of {Amount} on auction {AuctionId}", 
+            _logger.LogInformation("User {UserId} attempting to place bid of {Amount} on auction {AuctionId}",
                 userId, dto.Amount, dto.AuctionId);
 
             // 1. Get auction with product info and validate it exists
@@ -48,7 +48,7 @@ namespace WebApiTemplate.Service
             // 2. Validate auction status is active
             if (auction.Status != AuctionStatus.Active)
             {
-                _logger.LogWarning("Auction {AuctionId} is not active (status: {Status})", 
+                _logger.LogWarning("Auction {AuctionId} is not active (status: {Status})",
                     dto.AuctionId, auction.Status);
                 throw new InvalidOperationException("Auction is not active.");
             }
@@ -56,7 +56,7 @@ namespace WebApiTemplate.Service
             // 3. Validate user is not the product owner
             if (auction.Product.OwnerId == userId)
             {
-                _logger.LogWarning("User {UserId} attempted to bid on their own product {ProductId}", 
+                _logger.LogWarning("User {UserId} attempted to bid on their own product {ProductId}",
                     userId, auction.Product.ProductId);
                 throw new InvalidOperationException("You cannot bid on your own product.");
             }
@@ -75,7 +75,7 @@ namespace WebApiTemplate.Service
             // 5. Validate new bid amount > current highest
             if (dto.Amount <= currentHighestAmount)
             {
-                _logger.LogWarning("Bid amount {BidAmount} is not greater than current highest {CurrentHighest}", 
+                _logger.LogWarning("Bid amount {BidAmount} is not greater than current highest {CurrentHighest}",
                     dto.Amount, currentHighestAmount);
                 throw new InvalidOperationException(
                     $"Bid amount must be greater than current highest bid of {currentHighestAmount:C}.");
@@ -96,7 +96,7 @@ namespace WebApiTemplate.Service
 
             var createdBid = await _bidOperation.PlaceBidAsync(bid);
 
-            _logger.LogInformation("Bid {BidId} successfully placed by user {UserId} on auction {AuctionId}", 
+            _logger.LogInformation("Bid {BidId} successfully placed by user {UserId} on auction {AuctionId}",
                 createdBid.BidId, userId, dto.AuctionId);
 
             // 8. Map and return BidDto
@@ -131,7 +131,7 @@ namespace WebApiTemplate.Service
             await ValidateAuctionExistsAsync(auctionId);
 
             var bids = await _bidOperation.GetBidsForAuctionAsync(auctionId);
-            
+
             _logger.LogInformation("Found {BidCount} bids for auction {AuctionId}", bids.Count, auctionId);
 
             return bids.Select(MapBidToDto).ToList();
@@ -142,15 +142,15 @@ namespace WebApiTemplate.Service
         /// </summary>
         public async Task<PaginatedResultDto<BidDto>> GetBidsForAuctionAsync(int auctionId, PaginationDto pagination)
         {
-            _logger.LogInformation("Retrieving paginated bids for auction {AuctionId} (Page: {PageNumber}, Size: {PageSize})", 
+            _logger.LogInformation("Retrieving paginated bids for auction {AuctionId} (Page: {PageNumber}, Size: {PageSize})",
                 auctionId, pagination.PageNumber, pagination.PageSize);
 
             // Verify auction exists
             await ValidateAuctionExistsAsync(auctionId);
 
             var (totalCount, bids) = await _bidOperation.GetBidsForAuctionAsync(auctionId, pagination);
-            
-            _logger.LogInformation("Found {TotalCount} total bids for auction {AuctionId}, returning {ItemCount} items", 
+
+            _logger.LogInformation("Found {TotalCount} total bids for auction {AuctionId}, returning {ItemCount} items",
                 totalCount, auctionId, bids.Count);
 
             var items = bids.Select(MapBidToDto).ToList();
@@ -182,7 +182,7 @@ namespace WebApiTemplate.Service
 
             var (totalCount, bids) = await _bidOperation.GetFilteredBidsAsync(query, pagination);
 
-            _logger.LogInformation("Found {TotalCount} total bids, returning {ItemCount} items", 
+            _logger.LogInformation("Found {TotalCount} total bids, returning {ItemCount} items",
                 totalCount, bids.Count);
 
             var items = bids.Select(MapBidToDto).ToList();
@@ -206,4 +206,3 @@ namespace WebApiTemplate.Service
         }
     }
 }
-

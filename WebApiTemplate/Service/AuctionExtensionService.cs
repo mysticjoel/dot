@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using WebApiTemplate.Configuration;
 using WebApiTemplate.Constants;
@@ -130,7 +130,7 @@ namespace WebApiTemplate.Service
                         }
                         catch (Exception paymentEx)
                         {
-                            _logger.LogError(paymentEx, 
+                            _logger.LogError(paymentEx,
                                 "Error initiating payment flow for auction {AuctionId}. Auction status updated but payment not created.",
                                 auction.AuctionId);
                             // Don't fail the finalization - auction is already marked as pending payment
@@ -163,4 +163,3 @@ namespace WebApiTemplate.Service
         }
     }
 }
-
