@@ -11,6 +11,7 @@ namespace WebApiTemplate.Service
 {
     /// <summary>
     /// Service for sending email notifications via SMTP
+    /// Set SmtpSettings:Enabled = false to disable email functionality
     /// Priority order for SMTP password:
     /// 1. SmtpSettings:PasswordBase64 (Base64 encoded - RECOMMENDED)
     /// 2. SmtpSettings:Password (plain text - local development only)
@@ -18,8 +19,9 @@ namespace WebApiTemplate.Service
     public class EmailService : IEmailService
     {
         private readonly SmtpSettings _smtpSettings;
-        private readonly string _smtpPassword;
+        private readonly string? _smtpPassword;
         private readonly ILogger<EmailService> _logger;
+        private readonly bool _isSmtpEnabled;
 
         public EmailService(
             IOptions<SmtpSettings> smtpSettings,
@@ -28,14 +30,38 @@ namespace WebApiTemplate.Service
             _smtpSettings = smtpSettings.Value;
             _logger = logger;
 
-            // Decode SMTP password (same pattern as JWT SecretKey)
-            _smtpPassword = GetSmtpPassword();
+            // Check if SMTP is enabled
+            _isSmtpEnabled = _smtpSettings.Enabled;
+
+            if (_isSmtpEnabled)
+            {
+                // Only validate configuration if SMTP is enabled
+                try
+                {
+                    _smtpPassword = GetSmtpPassword();
+                    _logger.LogInformation("SMTP email service is ENABLED. Emails will be sent.");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, 
+                        "SMTP is enabled but configuration is invalid. Email functionality will be disabled. " +
+                        "Set SmtpSettings:Enabled = false to suppress this warning.");
+                    _isSmtpEnabled = false;
+                }
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "SMTP email service is DISABLED (SmtpSettings:Enabled = false). " +
+                    "No emails will be sent. This is normal for production without SMTP configuration.");
+            }
         }
 
         /// <summary>
         /// Gets SMTP password with priority: Base64 encoded (recommended) or plain text (dev only)
+        /// Returns null if SMTP is disabled or not configured
         /// </summary>
-        private string GetSmtpPassword()
+        private string? GetSmtpPassword()
         {
             // Priority 1: Base64 encoded password (RECOMMENDED for production)
             if (!string.IsNullOrWhiteSpace(_smtpSettings.PasswordBase64))
@@ -57,20 +83,30 @@ namespace WebApiTemplate.Service
             // Priority 2: Plain text password (local development only)
             if (!string.IsNullOrWhiteSpace(_smtpSettings.Password))
             {
-                //_logger.LogWarning("Using plain text SMTP password from SmtpSettings:Password. " +
-                //    "For production, use SmtpSettings:PasswordBase64 instead.");
                 return _smtpSettings.Password;
             }
 
             throw new InvalidOperationException(
-                "SMTP password not configured. Set either SmtpSettings:PasswordBase64 (recommended) or SmtpSettings:Password in appsettings.json");
+                "SMTP password not configured. Set either SmtpSettings:PasswordBase64 (recommended) or SmtpSettings:Password, " +
+                "or set SmtpSettings:Enabled = false to disable email functionality.");
         }
 
         /// <summary>
         /// Sends payment notification email to the highest bidder
+        /// If SMTP is disabled, logs a message and continues gracefully
         /// </summary>
         public async Task SendPaymentNotificationAsync(User bidder, Auction auction, PaymentAttempt attempt)
         {
+            // Check if SMTP is enabled
+            if (!_isSmtpEnabled)
+            {
+                _logger.LogInformation(
+                    "SMTP is disabled. Skipping payment notification email to {Email} for auction {AuctionId}. " +
+                    "User can still confirm payment manually.",
+                    bidder.Email, auction.AuctionId);
+                return; // Gracefully skip email sending
+            }
+
             try
             {
                 _logger.LogInformation(
@@ -89,7 +125,8 @@ namespace WebApiTemplate.Service
             catch (Exception ex)
             {
                 _logger.LogError(ex,
-                    "Failed to send payment notification email to {Email} for auction {AuctionId}",
+                    "Failed to send payment notification email to {Email} for auction {AuctionId}. " +
+                    "Payment flow will continue - user can confirm manually.",
                     bidder.Email, auction.AuctionId);
                 
                 // Don't throw - email failure shouldn't break the payment flow
@@ -174,6 +211,27 @@ namespace WebApiTemplate.Service
         /// </summary>
         private async Task SendEmailAsync(string toEmail, string subject, string htmlBody)
         {
+            // Validate required settings
+            if (string.IsNullOrWhiteSpace(_smtpSettings.Host))
+            {
+                throw new InvalidOperationException("SMTP Host is not configured");
+            }
+
+            if (string.IsNullOrWhiteSpace(_smtpSettings.Username))
+            {
+                throw new InvalidOperationException("SMTP Username is not configured");
+            }
+
+            if (string.IsNullOrWhiteSpace(_smtpPassword))
+            {
+                throw new InvalidOperationException("SMTP Password is not configured");
+            }
+
+            if (string.IsNullOrWhiteSpace(_smtpSettings.FromEmail))
+            {
+                throw new InvalidOperationException("SMTP FromEmail is not configured");
+            }
+
             using var smtpClient = new SmtpClient(_smtpSettings.Host, _smtpSettings.Port)
             {
                 EnableSsl = _smtpSettings.EnableSsl,
@@ -182,7 +240,7 @@ namespace WebApiTemplate.Service
 
             var mailMessage = new MailMessage
             {
-                From = new MailAddress(_smtpSettings.FromEmail, _smtpSettings.FromName),
+                From = new MailAddress(_smtpSettings.FromEmail, _smtpSettings.FromName ?? "BidSphere"),
                 Subject = subject,
                 Body = htmlBody,
                 IsBodyHtml = true
